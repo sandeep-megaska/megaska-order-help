@@ -4,8 +4,8 @@ const nextConfig = {
   async rewrites() {
     return [
       {
-        source: '/proxy',
-        destination: '/api/proxy'
+        source: "/proxy",
+        destination: "/api/proxy"
       }
     ];
   }
