@@ -32,7 +32,7 @@ async function shopifyGraphQL(query, variables) {
 
   const json = await resp.json();
   if (json.errors) {
-    throw new Error("Shopify GraphQL errors");
+    throw new Error(JSON.stringify(json.errors));
   }
   return json.data;
 }
@@ -86,6 +86,50 @@ async function listOrders(req, res) {
   }
 }
 
+// ---- Cancel order mutation ----
+async function cancelOrder(req, res) {
+  const orderId = req.query.order_id;
+  if (!orderId) {
+    res.status(400).json({ error: "order_id is required" });
+    return;
+  }
+
+  const mutation = `
+    mutation cancelOrder($id: ID!) {
+      orderCancel(id: $id) {
+        order {
+          id
+          displayFinancialStatus
+          displayFulfillmentStatus
+          cancelReason
+          cancelledAt
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  try {
+    const data = await shopifyGraphQL(mutation, { id: orderId });
+
+    const errors = data.orderCancel?.userErrors;
+    if (errors && errors.length > 0) {
+      res.status(400).json({ ok: false, errors });
+      return;
+    }
+
+    res.status(200).json({
+      ok: true,
+      order: data.orderCancel.order
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Cancel error" });
+  }
+}
+
 // ---- Main handler ----
 export default async function handler(req, res) {
   const action = req.query.action || "ping";
@@ -95,10 +139,15 @@ export default async function handler(req, res) {
     return;
   }
 
-  // default response
+  if (action === "cancelOrder") {
+    await cancelOrder(req, res);
+    return;
+  }
+
+  // default
   res.status(200).json({
     ok: true,
-    message: "Megaska App Proxy (Phase 2)",
+    message: "Megaska App Proxy (Phase 3 - Cancel Ready)",
     action
   });
 }
