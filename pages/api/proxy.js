@@ -95,25 +95,37 @@ async function cancelOrder(req, res) {
   }
 
   const mutation = `
-    mutation cancelOrder($id: ID!) {
-      orderCancel(id: $id) {
-        order {
-          id
-          displayFinancialStatus
-          displayFulfillmentStatus
-          cancelReason
-          cancelledAt
-        }
+    mutation cancelOrder(
+      $orderId: ID!,
+      $refund: Boolean!,
+      $restock: Boolean!,
+      $reason: OrderCancelReason
+    ) {
+      orderCancel(
+        orderId: $orderId,
+        refund: $refund,
+        restock: $restock,
+        reason: $reason
+      ) {
         userErrors {
           field
           message
+        }
+        job {
+          id
+          done
         }
       }
     }
   `;
 
   try {
-    const data = await shopifyGraphQL(mutation, { id: orderId });
+    const data = await shopifyGraphQL(mutation, {
+      orderId: orderId,
+      refund: false,
+      restock: false,
+      reason: null
+    });
 
     const errors = data.orderCancel?.userErrors;
     if (errors && errors.length > 0) {
@@ -123,7 +135,7 @@ async function cancelOrder(req, res) {
 
     res.status(200).json({
       ok: true,
-      order: data.orderCancel.order
+      job: data.orderCancel.job
     });
   } catch (err) {
     res.status(500).json({ error: err.message || "Cancel error" });
