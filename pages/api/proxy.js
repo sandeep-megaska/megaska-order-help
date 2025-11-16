@@ -1,9 +1,8 @@
-import type { NextApiRequest, NextApiResponse } from "next";
 import crypto from "crypto";
 
 const SHOPIFY_APP_API_SECRET = process.env.SHOPIFY_APP_API_SECRET || "";
 
-function verifyShopifyProxy(req: NextApiRequest): boolean {
+function verifyShopifyProxy(req) {
   const { signature, ...rest } = req.query;
 
   if (!signature || Array.isArray(signature)) return false;
@@ -21,16 +20,13 @@ function verifyShopifyProxy(req: NextApiRequest): boolean {
   return digest === signature;
 }
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
+export default function handler(req, res) {
   if (!verifyShopifyProxy(req)) {
     return res.status(401).json({ error: "Invalid Shopify proxy signature" });
   }
 
-  // For now just return a test payload – later we will add order lookup, cancel, etc.
-  res.status(200).json({
+  // For now just a test response. We'll add order logic later.
+  return res.status(200).json({
     ok: true,
     message: "Megaska App Proxy is working.",
     query: req.query
