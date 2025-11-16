@@ -6,7 +6,7 @@ const SHOPIFY_ADMIN_ACCESS_TOKEN =
   process.env.SHOPIFY_ADMIN_ACCESS_TOKEN || "";
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_SHOP_DOMAIN || "";
 
-// --- Optional: keep this for later if you want strict HMAC ---
+// Optional: HMAC for later
 function verifyShopifyProxy(req) {
   const secret = SHOPIFY_APP_API_SECRET;
   if (!secret) return false;
@@ -126,9 +126,8 @@ async function listOrders(req, res) {
 
   try {
     const data = await shopifyGraphQL(query, {});
-    const edges = data && data.orders && data.orders.edges
-      ? data.orders.edges
-      : [];
+    const edges =
+      data && data.orders && data.orders.edges ? data.orders.edges : [];
     const orders = edges.map(function (e) {
       return e.node;
     });
@@ -212,12 +211,10 @@ async function requestCancel(req, res) {
     `;
 
     const result = await shopifyGraphQL(cancelMutation, { id: orderId });
-    const payload = result && result.orderCancel
-      ? result.orderCancel
-      : null;
-    const userErrors = payload && payload.userErrors
-      ? payload.userErrors
-      : [];
+    const payload =
+      result && result.orderCancel ? result.orderCancel : null;
+    const userErrors =
+      payload && payload.userErrors ? payload.userErrors : [];
 
     if (userErrors.length > 0) {
       res.status(400).json({ error: userErrors[0].message });
@@ -239,8 +236,7 @@ async function requestCancel(req, res) {
 
 // ---- MAIN HANDLER ----
 export default async function handler(req, res) {
-  // For now, do NOT enforce proxy signature (to avoid blocking MVP)
-  // When ready, you can change this to true and use verifyShopifyProxy.
+  // For MVP we DO NOT enforce proxy signature, to avoid blocking.
   const enforceSignature = false;
   if (enforceSignature && !verifyShopifyProxy(req)) {
     res.status(401).json({ error: "Invalid Shopify proxy signature" });
