@@ -99,7 +99,7 @@ async function cancelOrder(req, res) {
       $orderId: ID!,
       $refund: Boolean!,
       $restock: Boolean!,
-      $reason: OrderCancelReason
+      $reason: OrderCancelReason!
     ) {
       orderCancel(
         orderId: $orderId,
@@ -121,10 +121,10 @@ async function cancelOrder(req, res) {
 
   try {
     const data = await shopifyGraphQL(mutation, {
-      orderId: orderId,
+      orderId,
       refund: false,
       restock: false,
-      reason: null
+      reason: "CUSTOMER"       // <-- FIXED
     });
 
     const errors = data.orderCancel?.userErrors;
@@ -141,6 +141,7 @@ async function cancelOrder(req, res) {
     res.status(500).json({ error: err.message || "Cancel error" });
   }
 }
+
 
 // ---- Main handler ----
 export default async function handler(req, res) {
