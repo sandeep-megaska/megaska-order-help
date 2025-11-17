@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+
+  // App Proxy: /proxy → /api/proxy  (NO redirect, only internal rewrite)
   async rewrites() {
     return [
       {
@@ -9,7 +11,8 @@ const nextConfig = {
       },
     ];
   },
-  // IMPORTANT: no redirects from /proxy → /proxy/ or similar
+
+  // No redirects from /proxy → /proxy/ etc.
 };
 
 module.exports = nextConfig;
