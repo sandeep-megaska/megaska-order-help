@@ -1,4 +1,11 @@
 // pages/api/proxy.js
+function setCORS(res) {
+  // For your use-case we don't send cookies, so * is safe.
+  // If you want to tighten later, replace * with "https://megaska.com".
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+}
 
 const SHOPIFY_ADMIN_ACCESS_TOKEN =
   process.env.SHOPIFY_ADMIN_ACCESS_TOKEN || "";
@@ -235,6 +242,15 @@ async function cancelOrder(req, res) {
 
 // ---- Main handler ----
 export default async function handler(req, res) {
+  // CORS for all responses
+  setCORS(res);
+
+  // Handle preflight (some browsers will send this)
+  if (req.method === "OPTIONS") {
+    res.status(200).end();
+    return;
+  }
+
   const action = req.query.action || "ping";
 
   if (action === "listOrders") {
@@ -254,3 +270,4 @@ export default async function handler(req, res) {
     action,
   });
 }
+
