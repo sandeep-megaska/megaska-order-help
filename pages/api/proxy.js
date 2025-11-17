@@ -150,7 +150,7 @@ async function cancelOrder(req, res) {
       return;
     }
 
-    if (order.canceledAt) {
+    if (order.cancelledAt) {
       res.status(400).json({
         ok: false,
         error: "This order is already cancelled."
