@@ -87,6 +87,8 @@ async function listOrders(req, res) {
 }
 
 // ---- Cancel order mutation ----
+// pages/api/proxy.js  — inside this file
+
 async function cancelOrder(req, res) {
   let orderId = req.query.order_id;
 
@@ -95,13 +97,13 @@ async function cancelOrder(req, res) {
     return;
   }
 
-  // Convert numeric ID → GID
+  // From Shopify app proxy we get a plain numeric ID like 6302697357448
+  // Convert to full GID if needed
   if (/^\d+$/.test(orderId)) {
     orderId = `gid://shopify/Order/${orderId}`;
   }
 
   console.log("DEBUG_FIXED_ORDER_ID", orderId);
-
 
   const mutation = `
     mutation cancelOrder(
@@ -116,13 +118,18 @@ async function cancelOrder(req, res) {
         restock: $restock,
         reason: $reason
       ) {
-        userErrors {
-          field
-          message
-        }
         job {
           id
           done
+        }
+        orderCancelUserErrors {
+          field
+          message
+          code
+        }
+        userErrors {
+          field
+          message
         }
       }
     }
@@ -130,24 +137,46 @@ async function cancelOrder(req, res) {
 
   try {
     const data = await shopifyGraphQL(mutation, {
-      orderId,
-      refund: false,
-      restock: false,
-      reason: "CUSTOMER"       // <-- FIXED
+      orderId,          // 👈 IMPORTANT: use orderId (GID string), not "id"
+      refund: false,    // we’re not auto-refunding
+      restock: false,   // we’re not restocking (your policy is exchange only)
+      reason: "CUSTOMER"
     });
 
-    const errors = data.orderCancel?.userErrors;
-    if (errors && errors.length > 0) {
-      res.status(400).json({ ok: false, errors });
+    if (!data || !data.orderCancel) {
+      res.status(500).json({
+        ok: false,
+        error: "Unexpected response from Shopify (no orderCancel payload)."
+      });
+      return;
+    }
+
+    const payload = data.orderCancel;
+    const errors = [
+      ...(payload.orderCancelUserErrors || []),
+      ...(payload.userErrors || [])
+    ];
+
+    if (errors.length > 0) {
+      console.error("CANCEL_USER_ERRORS", errors);
+      res.status(400).json({
+        ok: false,
+        error: errors[0].message || "Cancellation not allowed.",
+        errors
+      });
       return;
     }
 
     res.status(200).json({
       ok: true,
-      job: data.orderCancel.job
+      job: payload.job
     });
   } catch (err) {
-    res.status(500).json({ error: err.message || "Cancel error" });
+    console.error("CANCEL_FATAL_ERROR", err);
+    res.status(500).json({
+      ok: false,
+      error: err.message || "Unexpected error while cancelling order."
+    });
   }
 }
 
