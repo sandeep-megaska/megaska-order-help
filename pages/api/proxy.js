@@ -241,6 +241,200 @@ async function cancelOrder(req, res) {
   }
 }
 
+async function exchangeRequest(req, res) {
+  let orderId = req.query.order_id;
+  const customerEmail = req.query.customer_email;
+  const lineItemId = req.query.line_item_id;
+  const newSize = (req.query.new_size || "").trim();
+  const reason = (req.query.reason || "").trim();
+
+  if (!orderId) {
+    res.status(400).json({ ok: false, error: "order_id is required" });
+    return;
+  }
+  if (!customerEmail) {
+    res.status(400).json({ ok: false, error: "customer_email is required" });
+    return;
+  }
+  if (!lineItemId) {
+    res.status(400).json({ ok: false, error: "line_item_id is required" });
+    return;
+  }
+  if (!newSize) {
+    res.status(400).json({ ok: false, error: "new_size is required" });
+    return;
+  }
+
+  // If numeric order id, convert to GID as we do for cancel
+  if (/^\d+$/.test(orderId)) {
+    orderId = `gid://shopify/Order/${orderId}`;
+  }
+
+  console.log("DEBUG_EXCHANGE_INPUT", {
+    orderId,
+    customerEmail,
+    lineItemId,
+    newSize,
+    reason,
+  });
+
+  // 1) Fetch order details to verify ownership & eligibility
+  const getOrderQuery = `
+    query getOrderForExchange($id: ID!) {
+      order(id: $id) {
+        id
+        name
+        email
+        customer {
+          email
+        }
+        cancelledAt
+        displayFulfillmentStatus
+        tags
+        note
+        lineItems(first: 50) {
+          edges {
+            node {
+              id
+              name
+              sku
+              variantTitle
+              quantity
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  try {
+    const orderData = await shopifyGraphQL(getOrderQuery, { id: orderId });
+    const order = orderData?.order;
+
+    if (!order) {
+      res.status(404).json({ ok: false, error: "Order not found." });
+      return;
+    }
+
+    // Verify customer ownership
+    const orderEmail = order.customer?.email || order.email || "";
+    if (!orderEmail || orderEmail.toLowerCase() !== customerEmail.toLowerCase()) {
+      res.status(403).json({
+        ok: false,
+        error: "You are not allowed to request an exchange for this order.",
+      });
+      return;
+    }
+
+    // Already cancelled?
+    if (order.cancelledAt) {
+      res.status(400).json({
+        ok: false,
+        error: "This order is cancelled and not eligible for exchange.",
+      });
+      return;
+    }
+
+    // Check fulfillment status (must be FULFILLED to allow exchange)
+    if (order.displayFulfillmentStatus !== "FULFILLED") {
+      res.status(400).json({
+        ok: false,
+        error:
+          "This order is not yet delivered/fulfilled and is not eligible for exchange. Please try again after delivery.",
+      });
+      return;
+    }
+
+    // Check if exchange has already been requested
+    const tags = order.tags || [];
+    if (tags.includes("exchange-request")) {
+      res.status(400).json({
+        ok: false,
+        error: "An exchange request has already been submitted for this order.",
+      });
+      return;
+    }
+
+    // Find the line item being exchanged
+    const edges = order.lineItems?.edges || [];
+    const line = edges.find((e) => e.node.id === lineItemId);
+    if (!line) {
+      res.status(400).json({
+        ok: false,
+        error: "The selected item was not found in this order.",
+      });
+      return;
+    }
+
+    const li = line.node;
+
+    // Build a nice note line
+    let noteLine = `[EXCHANGE REQUEST] Product: ${li.name}`;
+    if (li.variantTitle) noteLine += ` (${li.variantTitle})`;
+    if (li.sku) noteLine += ` | SKU: ${li.sku}`;
+    noteLine += ` → New size requested: ${newSize}.`;
+    if (reason) noteLine += ` Reason: ${reason}`;
+
+    const existingNote = order.note || "";
+    const newNote =
+      existingNote && existingNote.trim().length > 0
+        ? `${existingNote}\n\n${noteLine}`
+        : noteLine;
+
+    const newTags = [...tags, "exchange-request"];
+
+    // 2) Update the order with note + tag
+    const updateMutation = `
+      mutation markExchangeRequested($input: OrderInput!) {
+        orderUpdate(input: $input) {
+          order {
+            id
+            tags
+            note
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    const updateData = await shopifyGraphQL(updateMutation, {
+      input: {
+        id: orderId,
+        tags: newTags,
+        note: newNote,
+      },
+    });
+
+    const updatePayload = updateData?.orderUpdate;
+    const userErrors = updatePayload?.userErrors || [];
+    if (userErrors.length > 0) {
+      console.error("EXCHANGE_ORDER_UPDATE_ERRORS", userErrors);
+      res.status(400).json({
+        ok: false,
+        error: userErrors[0].message || "Could not save exchange request.",
+        errors: userErrors,
+      });
+      return;
+    }
+
+    res.status(200).json({
+      ok: true,
+      message: "Your size exchange request has been submitted.",
+    });
+  } catch (err) {
+    console.error("EXCHANGE_FATAL_ERROR", err);
+    res.status(500).json({
+      ok: false,
+      error: err.message || "Unexpected error while submitting exchange request.",
+    });
+  }
+}
+
+
+
 // ---- Main handler ----
 export default async function handler(req, res) {
   // CORS for all responses
@@ -261,6 +455,10 @@ export default async function handler(req, res) {
 
   if (action === "cancelOrder") {
     await cancelOrder(req, res);
+    return;
+  }
+if (action === "exchangeRequest") {
+    await exchangeRequest(req, res);
     return;
   }
 
