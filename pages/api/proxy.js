@@ -117,19 +117,20 @@ async function cancelOrder(req, res) {
 
   // 1) Fetch order to verify ownership & status
   const orderQuery = `
-    query getOrder($id: ID!) {
-      order(id: $id) {
-        id
-        name
+  query getOrder($id: ID!) {
+    order(id: $id) {
+      id
+      name
+      email
+      customer {
         email
-        customer {
-          email
-        }
-        canceledAt
-        displayFulfillmentStatus
       }
+      cancelledAt
+      displayFulfillmentStatus
     }
-  `;
+  }
+`;
+
 
   try {
     const orderData = await shopifyGraphQL(orderQuery, { id: orderId });
