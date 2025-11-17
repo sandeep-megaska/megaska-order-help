@@ -195,10 +195,10 @@ export default async function handler(req, res) {
     return;
   }
 
-  // default
   res.status(200).json({
     ok: true,
     message: "Megaska App Proxy (Phase 3 - Cancel Ready)",
     action
   });
 }
+
