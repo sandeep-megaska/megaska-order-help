@@ -1,4 +1,5 @@
 // pages/api/proxy.js
+console.log("DEBUG_RAW_URL", req.url);
 
 const SHOPIFY_ADMIN_ACCESS_TOKEN =
   process.env.SHOPIFY_ADMIN_ACCESS_TOKEN || "";
