@@ -90,61 +90,116 @@ async function listOrders(req, res) {
 // ---- Cancel order ----
 async function cancelOrder(req, res) {
   let orderId = req.query.order_id;
+  const customerEmail = req.query.customer_email;
 
   if (!orderId) {
     res.status(400).json({ ok: false, error: "order_id is required" });
     return;
   }
+  if (!customerEmail) {
+    res.status(400).json({ ok: false, error: "customer_email is required" });
+    return;
+  }
 
-  // If Shopify sends numeric ID (from App Proxy), convert to GID
+  // If we get numeric ID, convert to GID
   if (/^\d+$/.test(orderId)) {
     orderId = `gid://shopify/Order/${orderId}`;
   }
 
-  console.log("DEBUG_FIXED_ORDER_ID", orderId);
+  console.log("DEBUG_CANCEL_INPUT", { orderId, customerEmail });
 
-  const mutation = `
-    mutation cancelOrder(
-      $orderId: ID!,
-      $refund: Boolean!,
-      $restock: Boolean!,
-      $reason: OrderCancelReason!
-    ) {
-      orderCancel(
-        orderId: $orderId,
-        refund: $refund,
-        restock: $restock,
-        reason: $reason
-      ) {
-        job {
-          id
-          done
+  // 1) Fetch order to verify ownership & status
+  const orderQuery = `
+    query getOrder($id: ID!) {
+      order(id: $id) {
+        id
+        name
+        email
+        customer {
+          email
         }
-        orderCancelUserErrors {
-          field
-          message
-          code
-        }
-        userErrors {
-          field
-          message
-        }
+        canceledAt
+        displayFulfillmentStatus
       }
     }
   `;
 
   try {
+    const orderData = await shopifyGraphQL(orderQuery, { id: orderId });
+    const order = orderData?.order;
+
+    if (!order) {
+      res.status(404).json({ ok: false, error: "Order not found." });
+      return;
+    }
+
+    const orderEmail = order.customer?.email || order.email || "";
+    if (!orderEmail || orderEmail.toLowerCase() !== customerEmail.toLowerCase()) {
+      res.status(403).json({
+        ok: false,
+        error: "You are not allowed to cancel this order."
+      });
+      return;
+    }
+
+    if (order.canceledAt) {
+      res.status(400).json({
+        ok: false,
+        error: "This order is already cancelled."
+      });
+      return;
+    }
+
+    if (order.displayFulfillmentStatus !== "UNFULFILLED") {
+      res.status(400).json({
+        ok: false,
+        error: "This order has already been processed or shipped and cannot be cancelled."
+      });
+      return;
+    }
+
+    // 2) Run Shopify cancel mutation
+    const mutation = `
+      mutation cancelOrder(
+        $orderId: ID!,
+        $refund: Boolean!,
+        $restock: Boolean!,
+        $reason: OrderCancelReason!
+      ) {
+        orderCancel(
+          orderId: $orderId,
+          refund: $refund,
+          restock: $restock,
+          reason: $reason
+        ) {
+          job {
+            id
+            done
+          }
+          orderCancelUserErrors {
+            field
+            message
+            code
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
     const data = await shopifyGraphQL(mutation, {
       orderId,
       refund: false,
       restock: false,
-      reason: "CUSTOMER",
+      reason: "CUSTOMER"
     });
 
     if (!data || !data.orderCancel) {
       res.status(500).json({
         ok: false,
-        error: "Unexpected response from Shopify (no orderCancel payload).",
+        error: "Unexpected response from Shopify (no orderCancel payload)."
       });
       return;
     }
@@ -152,7 +207,7 @@ async function cancelOrder(req, res) {
     const payload = data.orderCancel;
     const errors = [
       ...(payload.orderCancelUserErrors || []),
-      ...(payload.userErrors || []),
+      ...(payload.userErrors || [])
     ];
 
     if (errors.length > 0) {
@@ -160,20 +215,20 @@ async function cancelOrder(req, res) {
       res.status(400).json({
         ok: false,
         error: errors[0].message || "Cancellation not allowed.",
-        errors,
+        errors
       });
       return;
     }
 
     res.status(200).json({
       ok: true,
-      job: payload.job,
+      job: payload.job
     });
   } catch (err) {
     console.error("CANCEL_FATAL_ERROR", err);
     res.status(500).json({
       ok: false,
-      error: err.message || "Unexpected error while cancelling order.",
+      error: err.message || "Unexpected error while cancelling order."
     });
   }
 }
