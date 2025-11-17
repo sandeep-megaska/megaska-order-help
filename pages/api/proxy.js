@@ -88,6 +88,12 @@ async function listOrders(req, res) {
 
 // ---- Cancel order mutation ----
 async function cancelOrder(req, res) {
+  console.log("DEBUG_CANCEL_ORDER", {
+  query: req.query,
+  order_id: req.query.order_id
+});
+
+  
   const orderId = req.query.order_id;
   if (!orderId) {
     res.status(400).json({ error: "order_id is required" });
