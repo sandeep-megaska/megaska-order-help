@@ -448,6 +448,197 @@ if (!line) {
   }
 }
 
+async function defectReport(req, res) {
+  let orderId = req.query.order_id;
+  const customerEmail = req.query.customer_email;
+  const lineItemId = req.query.line_item_id;
+  const issueType = (req.query.issue_type || "").trim();
+  const description = (req.query.description || "").trim();
+
+  if (!orderId) {
+    res.status(400).json({ ok: false, error: "order_id is required" });
+    return;
+  }
+  if (!customerEmail) {
+    res.status(400).json({ ok: false, error: "customer_email is required" });
+    return;
+  }
+  if (!lineItemId) {
+    res.status(400).json({ ok: false, error: "line_item_id is required" });
+    return;
+  }
+  if (!issueType) {
+    res.status(400).json({ ok: false, error: "issue_type is required" });
+    return;
+  }
+
+  // Numeric → GID
+  if (/^\d+$/.test(orderId)) {
+    orderId = `gid://shopify/Order/${orderId}`;
+  }
+
+  console.log("DEBUG_DEFECT_INPUT", {
+    orderId,
+    customerEmail,
+    lineItemId,
+    issueType,
+    description,
+  });
+
+  const getOrderQuery = `
+    query getOrderForDefect($id: ID!) {
+      order(id: $id) {
+        id
+        name
+        email
+        customer {
+          email
+        }
+        cancelledAt
+        displayFulfillmentStatus
+        tags
+        note
+        lineItems(first: 50) {
+          edges {
+            node {
+              id
+              name
+              sku
+              variantTitle
+              quantity
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  try {
+    const orderData = await shopifyGraphQL(getOrderQuery, { id: orderId });
+    const order = orderData?.order;
+
+    if (!order) {
+      res.status(404).json({ ok: false, error: "Order not found." });
+      return;
+    }
+
+    const orderEmail = order.customer?.email || order.email || "";
+    if (!orderEmail || orderEmail.toLowerCase() !== customerEmail.toLowerCase()) {
+      res.status(403).json({
+        ok: false,
+        error: "You are not allowed to report an issue for this order.",
+      });
+      return;
+    }
+
+    if (order.cancelledAt) {
+      res.status(400).json({
+        ok: false,
+        error: "This order is cancelled and not eligible for issue reporting.",
+      });
+      return;
+    }
+
+    if (order.displayFulfillmentStatus !== "FULFILLED") {
+      res.status(400).json({
+        ok: false,
+        error:
+          "This order is not marked as delivered/fulfilled yet. Please report issues after delivery.",
+      });
+      return;
+    }
+
+    const tags = order.tags || [];
+    if (tags.includes("quality-issue")) {
+      res.status(400).json({
+        ok: false,
+        error: "A quality issue has already been reported for this order.",
+      });
+      return;
+    }
+
+    const edges = order.lineItems?.edges || [];
+    const line = edges.find((e) => {
+      const nodeId = e?.node?.id;
+      if (!nodeId) return false;
+      if (nodeId === lineItemId) return true;
+      if (/^\d+$/.test(lineItemId)) {
+        return nodeId.endsWith(`/${lineItemId}`);
+      }
+      return false;
+    });
+
+    if (!line) {
+      res.status(400).json({
+        ok: false,
+        error: "The selected item was not found in this order.",
+      });
+      return;
+    }
+
+    const li = line.node;
+    let noteLine = `[QUALITY ISSUE] Product: ${li.name}`;
+    if (li.variantTitle) noteLine += ` (${li.variantTitle})`;
+    if (li.sku) noteLine += ` | SKU: ${li.sku}`;
+    noteLine += ` | Issue: ${issueType}.`;
+    if (description) noteLine += ` Details: ${description}`;
+
+    const existingNote = order.note || "";
+    const newNote =
+      existingNote && existingNote.trim().length > 0
+        ? `${existingNote}\n\n${noteLine}`
+        : noteLine;
+
+    const newTags = [...tags, "quality-issue"];
+
+    const updateMutation = `
+      mutation markQualityIssue($input: OrderInput!) {
+        orderUpdate(input: $input) {
+          order {
+            id
+            tags
+            note
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    const updateData = await shopifyGraphQL(updateMutation, {
+      input: {
+        id: orderId,
+        tags: newTags,
+        note: newNote,
+      },
+    });
+
+    const updatePayload = updateData?.orderUpdate;
+    const userErrors = updatePayload?.userErrors || [];
+    if (userErrors.length > 0) {
+      console.error("DEFECT_ORDER_UPDATE_ERRORS", userErrors);
+      res.status(400).json({
+        ok: false,
+        error: userErrors[0].message || "Could not save quality issue report.",
+        errors: userErrors,
+      });
+      return;
+    }
+
+    res.status(200).json({
+      ok: true,
+      message: "Your quality issue report has been submitted.",
+    });
+  } catch (err) {
+    console.error("DEFECT_FATAL_ERROR", err);
+    res.status(500).json({
+      ok: false,
+      error: err.message || "Unexpected error while submitting quality issue.",
+    });
+  }
+}
 
 
 // ---- Main handler ----
@@ -476,7 +667,10 @@ if (action === "exchangeRequest") {
     await exchangeRequest(req, res);
     return;
   }
-
+if (action === "defectReport") {
+    await defectReport(req, res);
+    return;
+  }
   // default ping
   res.status(200).json({
     ok: true,
