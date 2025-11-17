@@ -1,5 +1,4 @@
 // pages/api/proxy.js
-console.log("DEBUG_RAW_URL", req.url);
 
 const SHOPIFY_ADMIN_ACCESS_TOKEN =
   process.env.SHOPIFY_ADMIN_ACCESS_TOKEN || "";
@@ -17,12 +16,12 @@ async function shopifyGraphQL(query, variables) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Shopify-Access-Token": SHOPIFY_ADMIN_ACCESS_TOKEN
+        "X-Shopify-Access-Token": SHOPIFY_ADMIN_ACCESS_TOKEN,
       },
       body: JSON.stringify({
-        query: query,
-        variables: variables || {}
-      })
+        query,
+        variables: variables || {},
+      }),
     }
   );
 
@@ -38,14 +37,15 @@ async function shopifyGraphQL(query, variables) {
   return json.data;
 }
 
-// ---- List orders for logged-in customer ----
+// ---- List orders (we already proved this works) ----
 async function listOrders(req, res) {
   const customerEmail = req.query.customer_email;
   const customerPhone = req.query.customer_phone;
 
   if (!customerEmail && !customerPhone) {
     res.status(400).json({
-      error: "customer_email or customer_phone is required"
+      ok: false,
+      error: "customer_email or customer_phone is required",
     });
     return;
   }
@@ -80,16 +80,14 @@ async function listOrders(req, res) {
     const data = await shopifyGraphQL(query);
     const edges = data.orders?.edges || [];
     const orders = edges.map((e) => e.node);
-
     res.status(200).json({ ok: true, orders });
   } catch (err) {
-    res.status(500).json({ error: err.message || "Error listing orders" });
+    console.error("LIST_ORDERS_ERROR", err);
+    res.status(500).json({ ok: false, error: err.message || "Error listing orders" });
   }
 }
 
-// ---- Cancel order mutation ----
-// pages/api/proxy.js  — inside this file
-
+// ---- Cancel order ----
 async function cancelOrder(req, res) {
   let orderId = req.query.order_id;
 
@@ -98,8 +96,7 @@ async function cancelOrder(req, res) {
     return;
   }
 
-  // From Shopify app proxy we get a plain numeric ID like 6302697357448
-  // Convert to full GID if needed
+  // If Shopify sends numeric ID (from App Proxy), convert to GID
   if (/^\d+$/.test(orderId)) {
     orderId = `gid://shopify/Order/${orderId}`;
   }
@@ -138,16 +135,16 @@ async function cancelOrder(req, res) {
 
   try {
     const data = await shopifyGraphQL(mutation, {
-      orderId,          // 👈 IMPORTANT: use orderId (GID string), not "id"
-      refund: false,    // we’re not auto-refunding
-      restock: false,   // we’re not restocking (your policy is exchange only)
-      reason: "CUSTOMER"
+      orderId,
+      refund: false,
+      restock: false,
+      reason: "CUSTOMER",
     });
 
     if (!data || !data.orderCancel) {
       res.status(500).json({
         ok: false,
-        error: "Unexpected response from Shopify (no orderCancel payload)."
+        error: "Unexpected response from Shopify (no orderCancel payload).",
       });
       return;
     }
@@ -155,7 +152,7 @@ async function cancelOrder(req, res) {
     const payload = data.orderCancel;
     const errors = [
       ...(payload.orderCancelUserErrors || []),
-      ...(payload.userErrors || [])
+      ...(payload.userErrors || []),
     ];
 
     if (errors.length > 0) {
@@ -163,24 +160,23 @@ async function cancelOrder(req, res) {
       res.status(400).json({
         ok: false,
         error: errors[0].message || "Cancellation not allowed.",
-        errors
+        errors,
       });
       return;
     }
 
     res.status(200).json({
       ok: true,
-      job: payload.job
+      job: payload.job,
     });
   } catch (err) {
     console.error("CANCEL_FATAL_ERROR", err);
     res.status(500).json({
       ok: false,
-      error: err.message || "Unexpected error while cancelling order."
+      error: err.message || "Unexpected error while cancelling order.",
     });
   }
 }
-
 
 // ---- Main handler ----
 export default async function handler(req, res) {
@@ -196,10 +192,10 @@ export default async function handler(req, res) {
     return;
   }
 
+  // default ping
   res.status(200).json({
     ok: true,
-    message: "Megaska App Proxy (Phase 3 - Cancel Ready)",
-    action
+    message: "Megaska App Proxy (ping)",
+    action,
   });
 }
-
