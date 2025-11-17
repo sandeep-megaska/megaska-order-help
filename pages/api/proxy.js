@@ -356,15 +356,30 @@ async function exchangeRequest(req, res) {
     }
 
     // Find the line item being exchanged
-    const edges = order.lineItems?.edges || [];
-    const line = edges.find((e) => e.node.id === lineItemId);
-    if (!line) {
-      res.status(400).json({
-        ok: false,
-        error: "The selected item was not found in this order.",
-      });
-      return;
-    }
+    // Find the line item being exchanged
+const edges = order.lineItems?.edges || [];
+const line = edges.find((e) => {
+  const nodeId = e?.node?.id;
+  if (!nodeId) return false;
+
+  // Exact match (GID)
+  if (nodeId === lineItemId) return true;
+
+  // If frontend sent numeric ID from Liquid, match by suffix
+  if (/^\d+$/.test(lineItemId)) {
+    return nodeId.endsWith(`/${lineItemId}`);
+  }
+
+  return false;
+});
+
+if (!line) {
+  res.status(400).json({
+    ok: false,
+    error: "The selected item was not found in this order.",
+  });
+  return;
+}
 
     const li = line.node;
 
