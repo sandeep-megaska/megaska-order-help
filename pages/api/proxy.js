@@ -43,6 +43,39 @@ async function shopifyGraphQL(query, variables) {
   }
   return json.data;
 }
+async function sendAdminAlert(subject, text) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const to = process.env.ADMIN_ALERT_EMAIL;
+  const from = process.env.ALERT_FROM_EMAIL || "Megaska Order Bot <noreply@megaska.com>";
+
+  if (!apiKey || !to) {
+    console.log("ADMIN_ALERT_SKIPPED", { reason: "missing env", subject });
+    return;
+  }
+
+  try {
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to,
+        subject,
+        text,
+      }),
+    });
+
+    if (!resp.ok) {
+      const body = await resp.text();
+      console.error("ADMIN_ALERT_FAILED", resp.status, body);
+    }
+  } catch (err) {
+    console.error("ADMIN_ALERT_ERROR", err);
+  }
+}
 
 // ---- List orders (we already proved this works) ----
 async function listOrders(req, res) {
@@ -227,7 +260,12 @@ async function cancelOrder(req, res) {
       });
       return;
     }
+    await sendAdminAlert(
+      `Megaska: Order cancellation request – ${orderId}`,
+      `A customer has requested cancellation.\n\nOrder ID: ${orderId}\nCustomer email: ${customerEmail}\nJob ID: ${payload.job?.id || "n/a"}`
+    );
 
+    
     res.status(200).json({
       ok: true,
       job: payload.job
@@ -348,6 +386,16 @@ async function exchangeRequest(req, res) {
     // Check if exchange has already been requested
     const tags = order.tags || [];
     if (tags.includes("exchange-request")) {
+          await sendAdminAlert(
+      `Megaska: Size exchange request – ${order.name || orderId}`,
+      `A customer has requested a size exchange.\n\nOrder: ${order.name || orderId}\nCustomer email: ${customerEmail}\nProduct: ${li.name}${li.variantTitle ? " (" + li.variantTitle + ")" : ""}\nSKU: ${li.sku || "-"}\nNew size requested: ${newSize}\nReason: ${reason || "not provided"}`
+    );
+
+    res.status(200).json({
+      ok: true,
+      message: "Your size exchange request has been submitted.",
+    });
+
       res.status(400).json({
         ok: false,
         error: "An exchange request has already been submitted for this order.",
@@ -434,7 +482,10 @@ if (!line) {
       });
       return;
     }
-
+await sendAdminAlert(
+      `Megaska: Size exchange request – ${order.name || orderId}`,
+      `A customer has requested a size exchange.\n\nOrder: ${order.name || orderId}\nCustomer email: ${customerEmail}\nProduct: ${li.name}${li.variantTitle ? " (" + li.variantTitle + ")" : ""}\nSKU: ${li.sku || "-"}\nNew size requested: ${newSize}\nReason: ${reason || "not provided"}`
+    );
     res.status(200).json({
       ok: true,
       message: "Your size exchange request has been submitted.",
@@ -626,7 +677,10 @@ async function defectReport(req, res) {
       });
       return;
     }
-
+await sendAdminAlert(
+      `Megaska: Quality issue reported – ${order.name || orderId}`,
+      `A customer has reported a quality issue.\n\nOrder: ${order.name || orderId}\nCustomer email: ${customerEmail}\nProduct: ${li.name}${li.variantTitle ? " (" + li.variantTitle + ")" : ""}\nSKU: ${li.sku || "-"}\nIssue type: ${issueType}\nDetails: ${description || "not provided"}`
+    );
     res.status(200).json({
       ok: true,
       message: "Your quality issue report has been submitted.",
