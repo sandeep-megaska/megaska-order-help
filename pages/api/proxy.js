@@ -1047,6 +1047,83 @@ async function adminCreditWalletHandler(req, res) {
     });
   }
 }
+async function createWalletDiscountHandler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ ok: false, error: "POST required" });
+  }
+
+  const customerEmail = (req.query.customer_email || "").trim().toLowerCase();
+
+  if (!customerEmail) {
+    return res.status(400).json({ ok: false, error: "customer_email required" });
+  }
+
+  // 1. Get wallet balance
+  const { data: walletRow, error: walletErr } = await supabase
+    .from("megaska_wallets")
+    .select("balance")
+    .eq("customer_email", customerEmail)
+    .single();
+
+  if (walletErr) {
+    console.error("WALLET_FETCH_ERROR", walletErr);
+    return res.status(500).json({ ok: false, error: "Wallet fetch failed" });
+  }
+
+  const balance = Number(walletRow?.balance || 0);
+  if (balance <= 0) {
+    return res.status(400).json({ ok: false, error: "Zero balance" });
+  }
+
+  // 2. Generate unique discount code
+  const uniquePart = Math.random().toString(36).substring(2, 7).toUpperCase();
+  const code = `MEG-WALLET-${balance}-${uniquePart}`;
+
+  // 3. Create discount code using Shopify API
+  const mutation = `
+    mutation walletDiscount($input: DiscountCodeBasicInput!) {
+      discountCodeBasicCreate(basicCodeDiscount: $input) {
+        codeDiscountNode {
+          id
+          codeDiscount {
+            ... on DiscountCodeBasic {
+              title
+            }
+          }
+        }
+        userErrors { field message }
+      }
+    }
+  `;
+
+  const discountInput = {
+    title: code,
+    code,
+    customerSelection: {
+      customerEmails: [customerEmail]
+    },
+    startsAt: new Date().toISOString(),
+    endsAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(), // expires in 3 days
+    usageLimit: 1,
+    appliesOncePerCustomer: true,
+    value: {
+      amount: balance,
+      valueType: "FIXED_AMOUNT"
+    }
+  };
+
+  const resp = await shopifyGraphQL(mutation, { input: discountInput });
+
+  if (resp.discountCodeBasicCreate?.userErrors?.length) {
+    console.error("DISCOUNT_CREATE_ERRORS", resp.discountCodeBasicCreate.userErrors);
+    return res.status(500).json({ ok: false, error: "Discount creation failed" });
+  }
+
+  return res.status(200).json({
+    ok: true,
+    code
+  });
+}
 
 // ---- Main handler ----
 export default async function handler(req, res) {
@@ -1081,6 +1158,8 @@ export default async function handler(req, res) {
 
     case "adminCreditWallet":
       return await adminCreditWalletHandler(req, res);
+case "createWalletDiscount":
+  return await createWalletDiscountHandler(req, res);
 
     default:
       return res.status(200).json({
