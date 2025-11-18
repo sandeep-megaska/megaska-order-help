@@ -20,7 +20,7 @@ export default function WalletAdmin() {
       const params = new URLSearchParams({
         action: "adminCreditWallet",
         admin_token: process.env.NEXT_PUBLIC_ADMIN_WALLET_TOKEN,
-        order_id: orderId,
+        order_ref: orderId,
       });
 
       // Optional: allow custom amount override
@@ -59,20 +59,21 @@ export default function WalletAdmin() {
 
       <div style={{ marginTop: 20, maxWidth: 400 }}>
         <label style={{ display: "block", marginBottom: 4 }}>
-          Shopify Order ID (numeric)
-        </label>
-        <input
-          type="text"
-          value={orderId}
-          onChange={(e) => setOrderId(e.target.value)}
-          style={{
-            width: "100%",
-            padding: "8px 10px",
-            borderRadius: 4,
-            border: "1px solid #ccc",
-          }}
-          placeholder="e.g. 6302697357448"
-        />
+  Shopify Order Number (e.g. 521225)
+</label>
+<input
+  type="text"
+  value={orderId}
+  onChange={(e) => setOrderId(e.target.value)}
+  style={{
+    width: "100%",
+    padding: "8px 10px",
+    borderRadius: 4,
+    border: "1px solid #ccc",
+  }}
+  placeholder="e.g. 521225"
+/>
+
 
         <label style={{ display: "block", marginTop: 12, marginBottom: 4 }}>
           Amount to credit (leave blank to use full order total)
