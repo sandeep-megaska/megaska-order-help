@@ -746,6 +746,307 @@ async function walletPing(req, res) {
     });
   }
 }
+async function ensureWalletRow(customerEmail, customerId) {
+  if (!supabase) {
+    throw new Error("Supabase client not initialized");
+  }
+
+  // Try to fetch existing row
+  let { data: walletRow, error } = await supabase
+    .from("megaska_wallets")
+    .select("*")
+    .eq("customer_email", customerEmail)
+    .single();
+
+  if (error && error.code !== "PGRST116") {
+    // PGRST116 = no rows found
+    console.error("ENSURE_WALLET_FETCH_ERROR", error);
+    throw new Error("Could not fetch wallet");
+  }
+
+  if (!walletRow) {
+    const { data: newRow, error: insertError } = await supabase
+      .from("megaska_wallets")
+      .insert({
+        customer_email: customerEmail,
+        customer_id: customerId || null,
+        balance: 0,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error("ENSURE_WALLET_INSERT_ERROR", insertError);
+      throw new Error("Could not create wallet");
+    }
+
+    walletRow = newRow;
+  }
+
+  return walletRow;
+}
+async function recordWalletTransaction(customerEmail, type, amount, reason, orderId) {
+  if (!supabase) return;
+
+  const numericAmount = Number(amount || 0);
+  if (!numericAmount || !["CREDIT", "DEBIT"].includes(type)) return;
+
+  const { error } = await supabase
+    .from("megaska_wallet_transactions")
+    .insert({
+      customer_email: customerEmail,
+      type,
+      amount: numericAmount,
+      reason: reason || null,
+      order_id: orderId || null,
+    });
+
+  if (error) {
+    console.error("WALLET_TXN_INSERT_ERROR", error);
+  }
+}
+async function creditWalletForOrder(order, rawAmount, reason, orderId) {
+  if (!supabase) {
+    throw new Error("Supabase client not initialized");
+  }
+
+  const customerEmail = order.customer?.email || order.email;
+  const customerId = order.customer?.id || null;
+
+  if (!customerEmail) {
+    throw new Error("Order has no customer email, cannot credit wallet");
+  }
+
+  const amount = Number(rawAmount || 0);
+  if (!amount || amount <= 0) {
+    throw new Error("Invalid amount for wallet credit");
+  }
+
+  // Ensure wallet exists
+  const walletRow = await ensureWalletRow(customerEmail, customerId);
+  const newBalance = Number(walletRow.balance || 0) + amount;
+
+  // Update balance
+  const { error: updateError } = await supabase
+    .from("megaska_wallets")
+    .update({
+      balance: newBalance,
+      last_updated: new Date().toISOString(),
+    })
+    .eq("customer_email", customerEmail);
+
+  if (updateError) {
+    console.error("WALLET_BALANCE_UPDATE_ERROR", updateError);
+    throw new Error("Failed to update wallet balance");
+  }
+
+  // Record transaction
+  await recordWalletTransaction(customerEmail, "CREDIT", amount, reason, orderId);
+
+  console.log("WALLET_CREDIT_SUCCESS", {
+    customerEmail,
+    amount,
+    newBalance,
+    reason,
+    orderId,
+  });
+
+  // Admin email
+  await sendAdminAlert(
+    `Megaska Wallet Credit – ₹${amount}`,
+    `Wallet credit issued.\n\nCustomer: ${customerEmail}\nAmount: ₹${amount}\nReason: ${reason}\nOrder: ${orderId || order.name || order.id}\nNew Balance: ₹${newBalance}`
+  );
+
+  return newBalance;
+}
+async function getWalletBalanceHandler(req, res) {
+  if (!supabase) {
+    res.status(500).json({ ok: false, error: "Supabase not configured" });
+    return;
+  }
+
+  const customerEmail = (req.query.customer_email || "").trim().toLowerCase();
+
+  if (!customerEmail) {
+    res.status(400).json({ ok: false, error: "customer_email is required" });
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("megaska_wallets")
+      .select("balance")
+      .eq("customer_email", customerEmail)
+      .single();
+
+    if (error && error.code !== "PGRST116") {
+      console.error("GET_WALLET_BALANCE_ERROR", error);
+      res.status(500).json({ ok: false, error: "Failed to fetch wallet balance" });
+      return;
+    }
+
+    const balance = data ? Number(data.balance || 0) : 0;
+
+    res.status(200).json({
+      ok: true,
+      email: customerEmail,
+      balance,
+    });
+  } catch (err) {
+    console.error("GET_WALLET_BALANCE_FATAL", err);
+    res.status(500).json({
+      ok: false,
+      error: err.message || "Unexpected error fetching wallet balance",
+    });
+  }
+}
+async function adminCreditWalletHandler(req, res) {
+  const adminToken = process.env.ADMIN_WALLET_TOKEN;
+  const providedToken = req.query.admin_token;
+
+  if (!adminToken || !providedToken || adminToken !== providedToken) {
+    res.status(403).json({ ok: false, error: "Unauthorized admin access" });
+    return;
+  }
+
+  const orderIdRaw = req.query.order_id;
+  const amountRaw = req.query.amount; // optional, if blank we'll use order total
+  const reason = (req.query.reason || "Admin wallet credit").trim();
+
+  if (!orderIdRaw) {
+    res.status(400).json({ ok: false, error: "order_id is required" });
+    return;
+  }
+
+  // Accept numeric or GID
+  let orderId = orderIdRaw;
+  if (/^\d+$/.test(orderIdRaw)) {
+    orderId = `gid://shopify/Order/${orderIdRaw}`;
+  }
+
+  try {
+    // 1) Fetch order details
+    const orderQuery = `
+      query getOrderForWallet($id: ID!) {
+        order(id: $id) {
+          id
+          name
+          email
+          customer { id email }
+          totalPriceSet {
+            shopMoney {
+              amount
+              currencyCode
+            }
+          }
+          paymentGatewayNames
+          displayFinancialStatus
+          tags
+          note
+        }
+      }
+    `;
+
+    const orderData = await shopifyGraphQL(orderQuery, { id: orderId });
+    const order = orderData?.order;
+
+    if (!order) {
+      res.status(404).json({ ok: false, error: "Order not found" });
+      return;
+    }
+
+    const isCOD = (order.paymentGatewayNames || []).includes("Cash on Delivery");
+    const isPaid = order.displayFinancialStatus === "PAID";
+
+    if (!isCOD) {
+      res.status(400).json({
+        ok: false,
+        error: "This order is not COD. For prepaid orders, use Razorpay refund.",
+      });
+      return;
+    }
+
+    if (!isPaid) {
+      res.status(400).json({
+        ok: false,
+        error:
+          "This COD order is not marked as PAID in Shopify. Please confirm delivery/payment before wallet credit.",
+      });
+      return;
+    }
+
+    const orderTotal = Number(order.totalPriceSet?.shopMoney?.amount || 0);
+    let amount = amountRaw ? Number(amountRaw) : orderTotal;
+
+    if (!amount || amount <= 0) {
+      res.status(400).json({
+        ok: false,
+        error: "Invalid amount for wallet credit",
+      });
+      return;
+    }
+
+    if (amount > orderTotal) {
+      // Safety: prevent over-credit by mistake
+      amount = orderTotal;
+    }
+
+    // 2) Credit wallet
+    const newBalance = await creditWalletForOrder(
+      order,
+      amount,
+      reason,
+      order.name || order.id
+    );
+
+    // 3) Update order note and tags
+    const existingNote = order.note || "";
+    const noteLine = `[WALLET CREDIT] ₹${amount} credited to Megaska Wallet. Reason: ${reason}. New wallet balance: ₹${newBalance}.`;
+    const newNote =
+      existingNote && existingNote.trim().length > 0
+        ? `${existingNote}\n\n${noteLine}`
+        : noteLine;
+
+    const existingTags = order.tags || [];
+    const newTags = existingTags.includes("wallet-credit")
+      ? existingTags
+      : [...existingTags, "wallet-credit"];
+
+    const noteMutation = `
+      mutation updateOrderWalletNote($input: OrderInput!) {
+        orderUpdate(input: $input) {
+          order { id }
+          userErrors { field message }
+        }
+      }
+    `;
+
+    const updateData = await shopifyGraphQL(noteMutation, {
+      input: {
+        id: orderId,
+        note: newNote,
+        tags: newTags,
+      },
+    });
+
+    const updateErrors = updateData?.orderUpdate?.userErrors || [];
+    if (updateErrors.length > 0) {
+      console.error("ORDER_NOTE_TAG_UPDATE_ERRORS", updateErrors);
+    }
+
+    res.status(200).json({
+      ok: true,
+      message: `Wallet credited with ₹${amount}. New balance: ₹${newBalance}.`,
+      newBalance,
+    });
+  } catch (err) {
+    console.error("ADMIN_CREDIT_WALLET_FATAL", err);
+    res.status(500).json({
+      ok: false,
+      error: err.message || "Unexpected error crediting wallet",
+    });
+  }
+}
 
 // ---- Main handler ----
 export default async function handler(req, res) {
@@ -775,6 +1076,11 @@ export default async function handler(req, res) {
 
     case "walletPing":
       return await walletPing(req, res);
+    case "getWalletBalance":
+      return await getWalletBalanceHandler(req, res);
+
+    case "adminCreditWallet":
+      return await adminCreditWalletHandler(req, res);
 
     default:
       return res.status(200).json({
