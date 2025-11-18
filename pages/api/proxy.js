@@ -1,4 +1,17 @@
 // pages/api/proxy.js
+import { createClient } from "@supabase/supabase-js";
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+
+let supabase = null;
+if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+  supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+} else {
+  console.warn("Supabase env vars missing: SUPABASE_URL or SUPABASE_SERVICE_KEY");
+}
+
+
+
 function setCORS(res) {
   // For your use-case we don't send cookies, so * is safe.
   // If you want to tighten later, replace * with "https://megaska.com".
@@ -694,6 +707,45 @@ await sendAdminAlert(
   }
 }
 
+async function walletPing(req, res) {
+  if (!supabase) {
+    res.status(500).json({
+      ok: false,
+      error: "Supabase client not initialized. Check SUPABASE_URL and SUPABASE_SERVICE_KEY env vars.",
+    });
+    return;
+  }
+
+  try {
+    // Try a very simple read on the wallets table
+    const { data, error } = await supabase
+      .from("megaska_wallets")
+      .select("id")
+      .limit(1);
+
+    if (error) {
+      console.error("WALLET_PING_DB_ERROR", error);
+      res.status(500).json({
+        ok: false,
+        error: "Supabase query failed",
+        details: error.message || error,
+      });
+      return;
+    }
+
+    res.status(200).json({
+      ok: true,
+      message: "Supabase wallet ping OK",
+      rowsChecked: data ? data.length : 0,
+    });
+  } catch (err) {
+    console.error("WALLET_PING_FATAL", err);
+    res.status(500).json({
+      ok: false,
+      error: err.message || "Unexpected error during wallet ping",
+    });
+  }
+}
 
 // ---- Main handler ----
 export default async function handler(req, res) {
@@ -725,6 +777,11 @@ if (action === "defectReport") {
     await defectReport(req, res);
     return;
   }
+    if (action === "walletPing") {
+    await walletPing(req, res);
+    return;
+  }
+
   // default ping
   res.status(200).json({
     ok: true,
