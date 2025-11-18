@@ -778,9 +778,9 @@ if (action === "defectReport") {
     return;
   }
     if (action === "walletPing") {
-    await walletPing(req, res);
-    return;
-  }
+  return await walletPing(req, res);
+}
+
 
   // default ping
   res.status(200).json({
