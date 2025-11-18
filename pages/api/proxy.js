@@ -749,10 +749,8 @@ async function walletPing(req, res) {
 
 // ---- Main handler ----
 export default async function handler(req, res) {
-  // CORS for all responses
   setCORS(res);
 
-  // Handle preflight (some browsers will send this)
   if (req.method === "OPTIONS") {
     res.status(200).end();
     return;
@@ -760,33 +758,30 @@ export default async function handler(req, res) {
 
   const action = req.query.action || "ping";
 
-  if (action === "listOrders") {
-    await listOrders(req, res);
-    return;
-  }
+  console.log("DEBUG_ACTION", action);
 
-  if (action === "cancelOrder") {
-    await cancelOrder(req, res);
-    return;
-  }
-if (action === "exchangeRequest") {
-    await exchangeRequest(req, res);
-    return;
-  }
-if (action === "defectReport") {
-    await defectReport(req, res);
-    return;
-  }
-    if (action === "walletPing") {
-  return await walletPing(req, res);
-}
+  switch (action) {
+    case "listOrders":
+      return await listOrders(req, res);
 
+    case "cancelOrder":
+      return await cancelOrder(req, res);
 
-  // default ping
-  res.status(200).json({
-    ok: true,
-    message: "Megaska App Proxy (ping)",
-    action,
-  });
+    case "exchangeRequest":
+      return await exchangeRequest(req, res);
+
+    case "defectReport":
+      return await defectReport(req, res);
+
+    case "walletPing":
+      return await walletPing(req, res);
+
+    default:
+      return res.status(200).json({
+        ok: true,
+        message: "Megaska App Proxy (ping)",
+        action,
+      });
+  }
 }
 
