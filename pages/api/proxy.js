@@ -982,26 +982,31 @@ async function adminCreditWalletHandler(req, res) {
       return;
     }
 
-    // ⬇️ from here down, keep your existing logic (isCOD, isPaid, amount, creditWalletForOrder etc.)
-    const isCOD = (order.paymentGatewayNames || []).includes("Cash on Delivery");
-    const isPaid = order.displayFinancialStatus === "PAID";
+    const gateways = (order.paymentGatewayNames || []).map(g => (g || "").toLowerCase());
+const isCOD = gateways.some(g => g.includes("cod") || g.includes("cash on delivery"));
+const financial = order.displayFinancialStatus; // "PAID", "PENDING", "REFUNDED", "VOIDED", ...
 
-    if (!isCOD) {
-      res.status(400).json({
-        ok: false,
-        error: "This order is not COD. For prepaid orders, use Razorpay refund.",
-      });
-      return;
-    }
+if (!isCOD) {
+  return res.status(400).json({
+    ok: false,
+    error: "This order is not a COD order. For prepaid orders, refund via Razorpay.",
+  });
+}
 
-    if (!isPaid) {
-      res.status(400).json({
-        ok: false,
-        error:
-          "This COD order is not marked as PAID in Shopify. Please confirm delivery/payment before wallet credit.",
-      });
-      return;
-    }
+if (financial === "REFUNDED" || financial === "VOIDED") {
+  return res.status(400).json({
+    ok: false,
+    error: "This COD order has already been refunded/voided in Shopify. Do not issue wallet credit again.",
+  });
+}
+
+if (financial !== "PAID") {
+  return res.status(400).json({
+    ok: false,
+    error: "This COD order is not marked as PAID yet. Confirm delivery/payment before issuing wallet credit.",
+  });
+}
+
 
     const orderTotal = Number(order.totalPriceSet?.shopMoney?.amount || 0);
     let amount = amountRaw ? Number(amountRaw) : orderTotal;
