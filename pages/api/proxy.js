@@ -1176,7 +1176,8 @@ export default async function handler(req, res) {
       return await getWalletBalanceHandler(req, res);
 
     case "adminCreditWallet":
-      return await adminCreditWalletHandler(req, res);
+  return await adminCreditWalletHandler(req, res);
+
 case "createWalletDiscount":
   return await createWalletDiscountHandler(req, res);
 
