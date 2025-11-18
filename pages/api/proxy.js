@@ -909,52 +909,80 @@ async function adminCreditWalletHandler(req, res) {
     return;
   }
 
-  const orderIdRaw = req.query.order_id;
-  const amountRaw = req.query.amount; // optional, if blank we'll use order total
+  const orderRefRaw = (req.query.order_ref || "").trim(); // 👈 instead of order_id
+  const amountRaw = req.query.amount;
   const reason = (req.query.reason || "Admin wallet credit").trim();
 
-  if (!orderIdRaw) {
-    res.status(400).json({ ok: false, error: "order_id is required" });
+  if (!orderRefRaw) {
+    res.status(400).json({ ok: false, error: "order_ref (order number) is required" });
     return;
   }
 
-  // Accept numeric or GID
-  let orderId = orderIdRaw;
-  if (/^\d+$/.test(orderIdRaw)) {
-    orderId = `gid://shopify/Order/${orderIdRaw}`;
-  }
+  let orderId = null;  // Shopify GID
+  let order = null;    // full order object we’ll fill
 
   try {
-    // 1) Fetch order details
-    const orderQuery = `
-      query getOrderForWallet($id: ID!) {
-        order(id: $id) {
-          id
-          name
-          email
-          customer { id email }
-          totalPriceSet {
-            shopMoney {
-              amount
-              currencyCode
+    // 🔹 CASE 1: orderRef looks like long numeric ID (e.g. 6302697357448)
+    if (/^\d{10,}$/.test(orderRefRaw)) {
+      orderId = `gid://shopify/Order/${orderRefRaw}`;
+
+      const orderQueryById = `
+        query getOrderById($id: ID!) {
+          order(id: $id) {
+            id
+            name
+            email
+            customer { id email }
+            totalPriceSet { shopMoney { amount currencyCode } }
+            paymentGatewayNames
+            displayFinancialStatus
+            tags
+            note
+          }
+        }
+      `;
+
+      const data = await shopifyGraphQL(orderQueryById, { id: orderId });
+      order = data?.order;
+    } else {
+      // 🔹 CASE 2: treat orderRef as Megaska order number, e.g. "521225"
+      const orderQueryByName = `
+        query getOrderByName($query: String!) {
+          orders(first: 1, query: $query) {
+            edges {
+              node {
+                id
+                name
+                email
+                customer { id email }
+                totalPriceSet { shopMoney { amount currencyCode } }
+                paymentGatewayNames
+                displayFinancialStatus
+                tags
+                note
+              }
             }
           }
-          paymentGatewayNames
-          displayFinancialStatus
-          tags
-          note
         }
+      `;
+
+      // Shopify search syntax: name:521225
+      const search = `name:${orderRefRaw}`;
+      const data = await shopifyGraphQL(orderQueryByName, { query: search });
+
+      const node = data?.orders?.edges?.[0]?.node;
+      if (node) {
+        order = node;
+        orderId = node.id;
       }
-    `;
+    }
 
-    const orderData = await shopifyGraphQL(orderQuery, { id: orderId });
-    const order = orderData?.order;
-
-    if (!order) {
-      res.status(404).json({ ok: false, error: "Order not found" });
+    if (!order || !orderId) {
+      res.status(404).json({ ok: false, error: "Order not found. Check the order number." });
       return;
     }
 
+    // ⬇️ from here down, keep your existing logic (isCOD, isPaid, amount, creditWalletForOrder etc.)
     const isCOD = (order.paymentGatewayNames || []).includes("Cash on Delivery");
     const isPaid = order.displayFinancialStatus === "PAID";
 
@@ -979,27 +1007,22 @@ async function adminCreditWalletHandler(req, res) {
     let amount = amountRaw ? Number(amountRaw) : orderTotal;
 
     if (!amount || amount <= 0) {
-      res.status(400).json({
-        ok: false,
-        error: "Invalid amount for wallet credit",
-      });
+      res.status(400).json({ ok: false, error: "Invalid amount for wallet credit" });
       return;
     }
 
     if (amount > orderTotal) {
-      // Safety: prevent over-credit by mistake
       amount = orderTotal;
     }
 
-    // 2) Credit wallet
     const newBalance = await creditWalletForOrder(
       order,
       amount,
       reason,
-      order.name || order.id
+      order.name || orderId
     );
 
-    // 3) Update order note and tags
+    // update note + tags (same as before)...
     const existingNote = order.note || "";
     const noteLine = `[WALLET CREDIT] ₹${amount} credited to Megaska Wallet. Reason: ${reason}. New wallet balance: ₹${newBalance}.`;
     const newNote =
@@ -1022,11 +1045,7 @@ async function adminCreditWalletHandler(req, res) {
     `;
 
     const updateData = await shopifyGraphQL(noteMutation, {
-      input: {
-        id: orderId,
-        note: newNote,
-        tags: newTags,
-      },
+      input: { id: orderId, note: newNote, tags: newTags },
     });
 
     const updateErrors = updateData?.orderUpdate?.userErrors || [];
