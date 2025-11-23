@@ -1,15 +1,8 @@
 // pages/api/sync-discounts.js
 
-const STORE_DOMAIN = process.env.SHOPIFY_SHOP_DOMAIN; // e.g. megaska.myshopify.com
-const ADMIN_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN; // Admin API access token
-const API_VERSION = process.env.SHOPIFY_API_VERSION || "2024-04";
-
-if (!STORE_DOMAIN) {
-  console.warn("SHOPIFY_SHOP_DOMAIN not set");
-}
-if (!ADMIN_TOKEN) {
-  console.warn("SHOPIFY_ADMIN_ACCESS_TOKEN not set");
-}
+const STORE_DOMAIN = process.env.SHOPIFY_SHOP_DOMAIN;   // e.g. bigonbuy-fashions.myshopify.com
+const ADMIN_TOKEN  = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN; // Admin API access token
+const API_VERSION  = process.env.SHOPIFY_API_VERSION || "2024-04";
 
 async function shopifyGraphQL(query, variables = {}) {
   const res = await fetch(`https://${STORE_DOMAIN}/admin/api/${API_VERSION}/graphql.json`, {
@@ -21,15 +14,19 @@ async function shopifyGraphQL(query, variables = {}) {
     body: JSON.stringify({ query, variables }),
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Shopify API error: ${res.status} ${text}`);
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch (e) {
+    throw new Error(`Non-JSON response from Shopify: ${text}`);
   }
 
-  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(`Shopify API error: ${res.status} ${text}`);
+  }
   if (json.errors) {
-    console.error("GraphQL errors:", JSON.stringify(json.errors, null, 2));
-    throw new Error("GraphQL errors from Shopify");
+    throw new Error(`GraphQL errors: ${JSON.stringify(json.errors)}`);
   }
   return json.data;
 }
@@ -64,7 +61,9 @@ export default async function handler(req, res) {
 
   try {
     let cursor = null;
+    let totalProducts = 0;
     let updatedCount = 0;
+    const errors = [];
 
     const productQuery = `
       query Products($cursor: String) {
@@ -73,6 +72,7 @@ export default async function handler(req, res) {
             cursor
             node {
               id
+              title
               variants(first: 100) {
                 edges {
                   node {
@@ -111,12 +111,13 @@ export default async function handler(req, res) {
 
     while (true) {
       const data = await shopifyGraphQL(productQuery, { cursor });
-
       const edges = data.products.edges;
       if (!edges.length) break;
 
       for (const edge of edges) {
         const product = edge.node;
+        totalProducts++;
+
         const variants = product.variants.edges.map(e => e.node);
         const discount = computeDiscountPercent(variants);
 
@@ -125,9 +126,14 @@ export default async function handler(req, res) {
           discount: String(discount),
         });
 
-        const errors = upd.productUpdate.userErrors;
-        if (errors && errors.length) {
-          console.error("Error updating product", product.id, errors);
+        const userErrors = upd.productUpdate.userErrors || [];
+        if (userErrors.length) {
+          errors.push({
+            productId: product.id,
+            title: product.title,
+            discount,
+            userErrors,
+          });
         } else {
           updatedCount++;
         }
@@ -139,10 +145,12 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
-      message: `Updated custom.discount_percent on ${updatedCount} products`,
+      domain: STORE_DOMAIN,
+      totalProducts,
+      updatedCount,
+      errorCount: errors.length,
+      sampleErrors: errors.slice(0, 5), // show first few
     });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ ok: false, error: err.message });
-  }
-}
+    return res.status
