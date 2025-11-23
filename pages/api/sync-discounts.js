@@ -49,6 +49,7 @@ function computeDiscountPercent(variants) {
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
+    res.setHeader("Allow", "GET");
     return res.status(405).json({ ok: false, error: "Use GET" });
   }
 
@@ -63,7 +64,7 @@ export default async function handler(req, res) {
     let cursor = null;
     let totalProducts = 0;
     let updatedCount = 0;
-    const errors = [];
+    const errorDetails = [];
 
     const productQuery = `
       query Products($cursor: String) {
@@ -112,6 +113,7 @@ export default async function handler(req, res) {
     while (true) {
       const data = await shopifyGraphQL(productQuery, { cursor });
       const edges = data.products.edges;
+
       if (!edges.length) break;
 
       for (const edge of edges) {
@@ -127,8 +129,8 @@ export default async function handler(req, res) {
         });
 
         const userErrors = upd.productUpdate.userErrors || [];
-        if (userErrors.length) {
-          errors.push({
+        if (userErrors.length > 0) {
+          errorDetails.push({
             productId: product.id,
             title: product.title,
             discount,
@@ -148,9 +150,11 @@ export default async function handler(req, res) {
       domain: STORE_DOMAIN,
       totalProducts,
       updatedCount,
-      errorCount: errors.length,
-      sampleErrors: errors.slice(0, 5), // show first few
+      errorCount: errorDetails.length,
+      sampleErrors: errorDetails.slice(0, 5),
     });
   } catch (err) {
     console.error(err);
-    return res.status
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+}
