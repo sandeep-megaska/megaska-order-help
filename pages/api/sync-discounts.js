@@ -99,7 +99,7 @@ export default async function handler(req, res) {
             {
               namespace: "custom",
               key: "discount_percent",
-              type: "integer",
+              type: "number_integer",
               value: $discount
             }
           ]
