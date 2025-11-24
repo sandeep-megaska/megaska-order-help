@@ -1,33 +1,17 @@
-export default function ProxyHome() {
-  return (
-    <main style={{ padding: "40px", maxWidth: "600px", margin: "0 auto" }}>
-      <h1>Megaska Smart Tools</h1>
-      <p>
-        This app powers:
-      </p>
+// pages/proxy/index.js
+export async function getServerSideProps() {
+  // When Shopify hits /apps/megaska-order-help,
+  // it maps to /proxy on your Vercel app.
+  // We simply redirect that to /proxy/quiz.
+  return {
+    redirect: {
+      destination: '/proxy/quiz',
+      permanent: false,
+    },
+  };
+}
 
-      <ul>
-        <li>Order Cancellation</li>
-        <li>Size Exchange Requests</li>
-        <li>Defect Reporting</li>
-        <li>Megaska Wallet</li>
-        <li>✨ New: Body Confidence Quiz</li>
-      </ul>
-
-      <a 
-        href="/apps/megaska-order-help/quiz" 
-        style={{
-          display: "inline-block",
-          padding: "12px 20px",
-          background: "#111",
-          color: "#fff",
-          borderRadius: "8px",
-          marginTop: "20px",
-          textDecoration: "none"
-        }}
-      >
-        Start Body Confidence Quiz
-      </a>
-    </main>
-  );
+// No UI needed because we immediately redirect
+export default function ProxyIndex() {
+  return null;
 }
