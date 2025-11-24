@@ -1,89 +1,114 @@
 // pages/size-quiz.js
-
 import { useState } from "react";
 
-const heightOptions = [
-  "Below 150 cm",
-  "150 – 159 cm",
-  "160 – 169 cm",
-  "170 – 179 cm",
-  "180 cm and above",
+// Megaska size chart (in inches)
+const sizeOrder = ["S", "M", "L", "XL", "XXL"];
+
+const sizeChart = [
+  { size: "S", bustMax: 34, waistMax: 30, hipMax: 36 },
+  { size: "M", bustMax: 36, waistMax: 32, hipMax: 38 },
+  { size: "L", bustMax: 38, waistMax: 34, hipMax: 40 },
+  { size: "XL", bustMax: 40, waistMax: 36, hipMax: 42 },
+  { size: "XXL", bustMax: 42, waistMax: 38, hipMax: 44 },
 ];
 
-const weightOptions = [
-  "Below 45 kg",
-  "45 – 54 kg",
-  "55 – 64 kg",
-  "65 – 74 kg",
-  "75 – 84 kg",
-  "85 kg and above",
-];
+function getSizeFromMeasurement(value, type) {
+  if (!value || Number.isNaN(value)) return null;
 
-const bustOptions = [
-  "Below 82 cm",
-  "82 – 87 cm",
-  "88 – 93 cm",
-  "94 – 99 cm",
-  "100 – 105 cm",
-  "106 cm and above",
-];
+  for (const row of sizeChart) {
+    if (type === "bust" && value <= row.bustMax) return row.size;
+    if (type === "waist" && value <= row.waistMax) return row.size;
+    if (type === "hip" && value <= row.hipMax) return row.size;
+  }
 
-const fitPreferenceOptions = [
-  "Snug / body hugging",
-  "Comfortable fit",
-  "Relaxed / a bit loose",
-];
+  // If above XXL range, default to largest size
+  return "XXL";
+}
 
-// Very simple rule-based engine – adjust ranges as per your real size chart
-function calculateSize({ height, weight, bust, fitPreference }) {
-  // Convert answers into numeric “score”
-  const score =
-    heightOptions.indexOf(height) +
-    weightOptions.indexOf(weight) +
-    bustOptions.indexOf(bust);
+function adjustForFitPreference(baseSize, fitPreference) {
+  if (!baseSize) return null;
 
-  let baseSize;
+  const idx = sizeOrder.indexOf(baseSize);
+  if (idx === -1) return baseSize;
 
-  if (score <= 3) baseSize = "S";
-  else if (score <= 5) baseSize = "M";
-  else if (score <= 7) baseSize = "L";
-  else if (score <= 9) baseSize = "XL";
-  else baseSize = "XXL";
-
-  // Adjust based on fit preference
   if (fitPreference === "Snug / body hugging") {
-    if (baseSize === "M") baseSize = "S";
-    else if (baseSize === "L") baseSize = "M";
-    else if (baseSize === "XL") baseSize = "L";
+    // go one size down if possible
+    return sizeOrder[Math.max(0, idx - 1)];
   }
 
   if (fitPreference === "Relaxed / a bit loose") {
-    if (baseSize === "S") baseSize = "M";
-    else if (baseSize === "M") baseSize = "L";
-    else if (baseSize === "L") baseSize = "XL";
+    // go one size up if possible
+    return sizeOrder[Math.min(sizeOrder.length - 1, idx + 1)];
   }
 
+  // Comfortable fit → no change
   return baseSize;
 }
 
+function calculateSize({ bust, waist, hip, fitPreference }) {
+  const bustSize = getSizeFromMeasurement(bust, "bust");
+  const waistSize = getSizeFromMeasurement(waist, "waist");
+  const hipSize = getSizeFromMeasurement(hip, "hip");
+
+  // Pick the largest size among bust/waist/hip for modest fit
+  const sizes = [bustSize, waistSize, hipSize].filter(Boolean);
+  if (sizes.length === 0) return null;
+
+  let maxIndex = 0;
+  sizes.forEach((s) => {
+    const idx = sizeOrder.indexOf(s);
+    if (idx > maxIndex) maxIndex = idx;
+  });
+
+  let baseSize = sizeOrder[maxIndex];
+
+  // Adjust for fit preference
+  const finalSize = adjustForFitPreference(baseSize, fitPreference);
+
+  return { finalSize, bustSize, waistSize, hipSize };
+}
+
 export default function SizeQuizPage() {
-  const [height, setHeight] = useState("");
-  const [weight, setWeight] = useState("");
   const [bust, setBust] = useState("");
+  const [waist, setWaist] = useState("");
+  const [hip, setHip] = useState("");
   const [fitPreference, setFitPreference] = useState("");
   const [result, setResult] = useState(null);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!height || !weight || !bust || !fitPreference) return;
 
-    const size = calculateSize({ height, weight, bust, fitPreference });
-    setResult(size);
+    const bustNum = parseFloat(bust);
+    const waistNum = parseFloat(waist);
+    const hipNum = parseFloat(hip);
 
-    // Optional: postMessage to parent window (Shopify) so you can display it outside iframe
-    if (typeof window !== "undefined" && window.parent) {
+    if (
+      !bust ||
+      !waist ||
+      !hip ||
+      !fitPreference ||
+      Number.isNaN(bustNum) ||
+      Number.isNaN(waistNum) ||
+      Number.isNaN(hipNum)
+    ) {
+      return;
+    }
+
+    const sizeResult = calculateSize({
+      bust: bustNum,
+      waist: waistNum,
+      hip: hipNum,
+      fitPreference,
+    });
+
+    setResult(sizeResult);
+
+    if (sizeResult?.finalSize && typeof window !== "undefined" && window.parent) {
       window.parent.postMessage(
-        { type: "MEGASKA_SIZE_SUGGESTION", size },
+        {
+          type: "MEGASKA_SIZE_SUGGESTION",
+          size: sizeResult.finalSize,
+        },
         "*"
       );
     }
@@ -102,8 +127,129 @@ export default function SizeQuizPage() {
         Megaska Size Helper
       </h1>
       <p style={{ fontSize: "0.9rem", marginBottom: "16px", lineHeight: 1.4 }}>
-        Answer a few quick questions to find your recommended Megaska size.
+        Enter your body measurements in inches to find your recommended Megaska size.
       </p>
 
       <form onSubmit={handleSubmit}>
-        <label style={{ display: "block", marginBo
+        <label style={{ display: "block", marginBottom: "12px" }}>
+          <span style={{ fontSize: "0.85rem" }}>Bust (inches)</span>
+          <input
+            type="number"
+            step="0.5"
+            min="28"
+            max="50"
+            value={bust}
+            onChange={(e) => setBust(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "8px",
+              marginTop: "4px",
+            }}
+            required
+          />
+        </label>
+
+        <label style={{ display: "block", marginBottom: "12px" }}>
+          <span style={{ fontSize: "0.85rem" }}>Waist (inches)</span>
+          <input
+            type="number"
+            step="0.5"
+            min="24"
+            max="48"
+            value={waist}
+            onChange={(e) => setWaist(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "8px",
+              marginTop: "4px",
+            }}
+            required
+          />
+        </label>
+
+        <label style={{ display: "block", marginBottom: "16px" }}>
+          <span style={{ fontSize: "0.85rem" }}>Hips (inches)</span>
+          <input
+            type="number"
+            step="0.5"
+            min="30"
+            max="52"
+            value={hip}
+            onChange={(e) => setHip(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "8px",
+              marginTop: "4px",
+            }}
+            required
+          />
+        </label>
+
+        <label style={{ display: "block", marginBottom: "16px" }}>
+          <span style={{ fontSize: "0.85rem" }}>Fit preference</span>
+          <select
+            value={fitPreference}
+            onChange={(e) => setFitPreference(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "8px",
+              marginTop: "4px",
+            }}
+            required
+          >
+            <option value="">Select fit preference</option>
+            <option value="Snug / body hugging">Snug / body hugging</option>
+            <option value="Comfortable fit">Comfortable fit</option>
+            <option value="Relaxed / a bit loose">Relaxed / a bit loose</option>
+          </select>
+        </label>
+
+        <button
+          type="submit"
+          style={{
+            width: "100%",
+            padding: "10px",
+            borderRadius: "999px",
+            border: "none",
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          Find my size
+        </button>
+      </form>
+
+      {result?.finalSize && (
+        <div
+          style={{
+            marginTop: "16px",
+            padding: "12px",
+            borderRadius: "8px",
+            border: "1px solid #e5e5e5",
+            fontSize: "0.9rem",
+          }}
+        >
+          <strong>Suggested size: {result.finalSize}</strong>
+          <p style={{ marginTop: "4px" }}>
+            Based on your measurements:
+          </p>
+          <ul style={{ marginTop: "4px", paddingLeft: "18px" }}>
+            <li>Bust best match: {result.bustSize}</li>
+            <li>Waist best match: {result.waistSize}</li>
+            <li>Hips best match: {result.hipSize}</li>
+          </ul>
+          <p style={{ marginTop: "6px" }}>
+            We recommend starting with <b>{result.finalSize}</b> for a modest
+            coverage fit. If you’re between sizes, we usually suggest the
+            larger size.
+          </p>
+        </div>
+      )}
+
+      <p style={{ fontSize: "0.75rem", marginTop: "16px", opacity: 0.7 }}>
+        Measurements are body measurements in inches. For layered modest swimwear,
+        many customers prefer a slightly relaxed fit rather than very tight.
+      </p>
+    </div>
+  );
+}
