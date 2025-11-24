@@ -1,18 +1,36 @@
 // pages/proxy/index.js
 
-export async function getServerSideProps() {
-  // When Shopify hits /apps/megaska-order-help (mapped to /proxy on Vercel),
-  // tell the BROWSER to go to /apps/megaska-order-help/quiz,
-  // so it stays under the app-proxy path.
-  return {
-    redirect: {
-      destination: '/apps/megaska-order-help/quiz',
-      permanent: false,
-    },
-  };
-}
-
-// No UI needed because we immediately redirect
 export default function ProxyIndex() {
-  return null;
+  // This is what Shopify will embed at /apps/megaska-order-help
+  return (
+    <main style={{ padding: "32px", fontFamily: "system-ui", maxWidth: 640, margin: "0 auto" }}>
+      <h1 style={{ fontSize: "1.8rem", marginBottom: "12px" }}>
+        Megaska Smart Tools
+      </h1>
+      <p style={{ marginBottom: "16px", color: "#4b5563" }}>
+        Welcome to Megaska’s customer tools. From here you can:
+      </p>
+      <ul style={{ marginBottom: "20px", paddingLeft: "20px", color: "#111827" }}>
+        <li>Check order & size exchange options</li>
+        <li>Report delivery issues</li>
+        <li>Use your Megaska wallet</li>
+        <li><strong>Try the Body Confidence Quiz</strong> to find your best-fit styles</li>
+      </ul>
+
+      <a
+        href="/apps/megaska-order-help/quiz"
+        style={{
+          display: "inline-block",
+          padding: "10px 18px",
+          borderRadius: "999px",
+          background: "#111827",
+          color: "#ffffff",
+          textDecoration: "none",
+          fontWeight: 600,
+        }}
+      >
+        Start Body Confidence Quiz
+      </a>
+    </main>
+  );
 }
