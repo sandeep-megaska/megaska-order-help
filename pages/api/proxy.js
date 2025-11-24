@@ -1148,6 +1148,153 @@ async function createWalletDiscountHandler(req, res) {
     code
   });
 }
+// === MEGASKA Body Confidence Quiz → Personalized Product Matching ===
+
+async function quizRecommend(req, res) {
+  try {
+    const shop = req.query.shop || process.env.SHOPIFY_SHOP;
+    if (!shop) {
+      res.status(400).json({ ok: false, error: "Missing shop context" });
+      return;
+    }
+
+    // Read quiz answers from query params
+    const shape = (req.query.shape || "").toLowerCase();       // pear, apple, hourglass, rectangle, plus
+    const coverage = (req.query.coverage || "").toLowerCase(); // light, moderate, full
+    const thighs = (req.query.thighs || "").toLowerCase();     // short, knee, full
+    const activity = (req.query.activity || "").toLowerCase(); // casual, lap, aqua, modest
+    const style = (req.query.style || "").toLowerCase();       // simple, prints, sporty
+
+    // Build a Shopify product query string based on rules
+    // NOTE: You must ensure your products have tags that match these keywords.
+    const queryParts = [];
+
+    // Prefer only in-stock + published products
+    queryParts.push("status:active");
+    queryParts.push("inventory_total:>0");
+
+    // Coverage rule
+    if (coverage === "full") {
+      // e.g. full-length swimsuits, burkini, high coverage
+      queryParts.push("(tag:full-coverage OR tag:burkini OR tag:full-length)");
+    } else if (coverage === "moderate") {
+      // knee length, dress type
+      queryParts.push("(tag:knee-length OR tag:modest OR tag:dress-type)");
+    } else if (coverage === "light") {
+      // shorter, more open styles (future tankini, etc.)
+      queryParts.push("(tag:short-length OR tag:tankini)");
+    }
+
+    // Body shape hints (optional; you can adjust tags later)
+    if (shape === "pear") {
+      queryParts.push("(tag:hip-coverage OR tag:a-line)");
+    } else if (shape === "apple") {
+      queryParts.push("(tag:tummy-control OR tag:ruched)");
+    } else if (shape === "hourglass") {
+      queryParts.push("(tag:waist-emphasis OR tag:fit-and-flare)");
+    } else if (shape === "plus") {
+      queryParts.push("(tag:plus-friendly OR tag:curve-fit)");
+    }
+
+    // Thigh coverage
+    if (thighs === "full") {
+      queryParts.push("(tag:full-leg OR tag:ankle-length)");
+    } else if (thighs === "knee") {
+      queryParts.push("(tag:knee-length)");
+    } else if (thighs === "short") {
+      queryParts.push("(tag:above-knee)");
+    }
+
+    // Activity
+    if (activity === "aqua") {
+      queryParts.push("(tag:aqua-aerobics OR tag:performance)");
+    } else if (activity === "lap") {
+      queryParts.push("(tag:lap-swim OR tag:sport-fit)");
+    } else if (activity === "modest") {
+      queryParts.push("(tag:burkini OR tag:modest OR tag:full-coverage)");
+    } else if (activity === "beach") {
+      queryParts.push("(tag:holiday OR tag:vacation)");
+    }
+
+    // Style preference
+    if (style === "simple") {
+      queryParts.push("(tag:solid OR tag:minimal)");
+    } else if (style === "prints") {
+      queryParts.push("(tag:print OR tag:floral OR tag:pattern)");
+    } else if (style === "sporty") {
+      queryParts.push("(tag:sporty OR tag:rashguard)");
+    }
+
+    // Fallback if query too narrow
+    let query = queryParts.join(" AND ");
+    if (!query || query.trim().length === 0) {
+      // just show active + in-stock swimwear
+      query = "product_type:Swimwear AND status:active AND inventory_total:>0";
+    }
+
+    console.log("[QUIZ] Shopify product query:", query);
+
+    const gql = `
+      query QuizProducts($first: Int!, $query: String!) {
+        products(first: $first, query: $query) {
+          edges {
+            node {
+              id
+              handle
+              title
+              onlineStoreUrl
+              featuredImage {
+                url
+                altText
+              }
+              priceRangeV2 {
+                minVariantPrice {
+                  amount
+                  currencyCode
+                }
+              }
+              metafield(namespace: "custom", key: "short_description") {
+                value
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    // Use your existing helper for Shopify Admin GraphQL
+    const data = await shopifyGraphQL(gql, { first: 8, query });
+
+    const edges = data?.products?.edges || [];
+    const products = edges.map(edge => {
+      const p = edge.node;
+      const price = p.priceRangeV2?.minVariantPrice;
+      return {
+        id: p.id,
+        handle: p.handle,
+        title: p.title,
+        url: p.onlineStoreUrl || `https://${shop}/products/${p.handle}`,
+        image: p.featuredImage?.url || null,
+        imageAlt: p.featuredImage?.altText || p.title,
+        price: price ? `${price.amount} ${price.currencyCode}` : null,
+        shortDescription: p.metafield?.value || "",
+      };
+    });
+
+    res.status(200).json({
+      ok: true,
+      query,
+      count: products.length,
+      products,
+    });
+  } catch (err) {
+    console.error("QUIZ_RECOMMEND_ERROR", err);
+    res.status(500).json({
+      ok: false,
+      error: err.message || "Unexpected error in quizRecommend",
+    });
+  }
+}
 
 // ---- Main handler ----
 export default async function handler(req, res) {
