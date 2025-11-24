@@ -1,111 +1,51 @@
 // pages/auth/callback.js
-import crypto from "crypto";
 
-const SHOPIFY_API_KEY = process.env.SHOPIFY_API_KEY;
-const SHOPIFY_APP_API_SECRET = process.env.SHOPIFY_APP_API_SECRET;
-const SHOPIFY_APP_URL = process.env.SHOPIFY_APP_URL;
-const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_SHOP_DOMAIN;
+export async function getServerSideProps({ query }) {
+  const { shop, code } = query;
 
-function validateHmac(query) {
-  const { hmac, ...rest } = query;
-  const message = Object.keys(rest)
-    .sort()
-    .map((k) => `${k}=${Array.isArray(rest[k]) ? rest[k][0] : rest[k]}`)
-    .join("&");
+  if (!shop || !code) {
+    return {
+      props: { error: "Missing shop or code in callback" },
+    };
+  }
 
-  const digest = crypto
-    .createHmac("sha256", SHOPIFY_APP_API_SECRET)
-    .update(message)
-    .digest("hex");
+  const tokenUrl = `https://${shop}/admin/oauth/access_token`;
 
-  return digest === hmac;
+  const response = await fetch(tokenUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: process.env.SHOPIFY_API_KEY,      // Client ID from Dev Dashboard
+      client_secret: process.env.SHOPIFY_API_SECRET, // Secret from Dev Dashboard
+      code,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.access_token) {
+    console.error("❌ Token exchange error:", response.status, data);
+    return {
+      props: { error: "Error getting access token" },
+    };
+  }
+
+  // THIS is your permanent Admin API token for this store+app
+  console.log("✅ SHOPIFY ACCESS TOKEN:", data.access_token);
+  console.log("✅ SHOP:", shop);
+
+  // After copying token into Vercel env, we send user to the app UI
+  return {
+    redirect: {
+      destination: "/admin/wallet", // your existing admin page
+      permanent: false,
+    },
+  };
 }
 
-export async function getServerSideProps(context) {
-  const { query } = context;
-  const { shop, code, hmac } = query;
-
-  if (!shop || !code || !hmac) {
-    return {
-      props: {
-        error: "Missing required parameters from Shopify."
-      }
-    };
+export default function AuthCallbackPage(props) {
+  if (props.error) {
+    return <div>Auth error: {props.error}</div>;
   }
-
-  if (!validateHmac(query)) {
-    return {
-      props: {
-        error: "Invalid HMAC in callback (security check failed)."
-      }
-    };
-  }
-
-  const tokenEndpoint = `https://${SHOPIFY_SHOP_DOMAIN}/admin/oauth/access_token`;
-
-  try {
-    const resp = await fetch(tokenEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        client_id: SHOPIFY_API_KEY,
-        client_secret: SHOPIFY_APP_API_SECRET,
-        code
-      })
-    });
-
-    if (!resp.ok) {
-      const text = await resp.text();
-      console.error("Token error:", resp.status, text);
-      return {
-        props: {
-          error: "Error getting access token from Shopify. Check logs in Vercel."
-        }
-      };
-    }
-
-    const json = await resp.json();
-    const accessToken = json.access_token;
-    const scope = json.scope;
-
-    console.log("SHOPIFY ACCESS TOKEN (save this safely):", accessToken);
-    console.log("Granted scopes:", scope);
-
-    return {
-      props: {
-        ok: true
-      }
-    };
-  } catch (err) {
-    console.error(err);
-    return {
-      props: {
-        error: "Unexpected error getting token. Check Vercel logs."
-      }
-    };
-  }
-}
-
-export default function OAuthCallbackPage({ ok, error }) {
-  return (
-    <main style={{ padding: 20, fontFamily: "system-ui" }}>
-      <h1>Megaska OAuth</h1>
-      {error && (
-        <>
-          <p style={{ color: "red" }}>Error: {error}</p>
-          <p>Please check the logs in Vercel for more details.</p>
-        </>
-      )}
-      {ok && (
-        <>
-          <p>OAuth completed successfully.</p>
-          <p>
-            The access token has been printed in your Vercel logs. Go to Vercel
-            → Project → Logs, copy the token, and store it in the
-            <code>SHOPIFY_ADMIN_ACCESS_TOKEN</code> environment variable.
-          </p>
-        </>
-      )}
-    </main>
-  );
+  return <div>Completing authentication…</div>;
 }
