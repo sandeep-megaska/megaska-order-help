@@ -1185,6 +1185,8 @@ export default async function handler(req, res) {
 
 case "createWalletDiscount":
   return await createWalletDiscountHandler(req, res);
+    case "quizRecommend":
+      return await quizRecommend(req, res);
 
     default:
       return res.status(200).json({
