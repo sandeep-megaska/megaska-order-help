@@ -225,8 +225,16 @@ export default function StyleQuizPage() {
     }
   };
 
-  return (
-         <div
+   return (
+    <div
+      style={{
+        maxWidth: "480px",
+        margin: "0 auto",
+        padding: "16px",
+      }}
+    >
+      {/* Header */}
+      <div
         style={{
           display: "flex",
           alignItems: "center",
@@ -269,6 +277,8 @@ export default function StyleQuizPage() {
           </p>
         </div>
       </div>
+
+      {/* Intro text */}
       <p
         style={{
           fontSize: "0.9rem",
@@ -276,12 +286,11 @@ export default function StyleQuizPage() {
           lineHeight: 1.4,
         }}
       >
-      
-  Answer a few quick questions and we'll suggest a swimwear style
-  that supports your body, comfort and modesty.
-</p>
+        Answer a few quick questions and we'll suggest a swimwear style that
+        supports your body, comfort and modesty.
+      </p>
 
-
+      {/* Form steps */}
       <form onSubmit={handleSubmit}>
         {step === 0 && (
           <div>
@@ -329,22 +338,21 @@ export default function StyleQuizPage() {
                 type="button"
                 onClick={() => handleAnswer("coverage", opt)}
                 style={{
-  display: "block",
-  width: "100%",
-  textAlign: "left",
-  marginBottom: "6px",
-  padding: "8px 10px",
-  borderRadius: "8px",
-  border:
-    answers.coverage === opt
-      ? "2px solid #111"
-      : "1px solid #ddd",
-  background:
-    answers.coverage === opt ? "#f5f5f5" : "#fff",
-  fontSize: "0.9rem",
-  cursor: "pointer",
-}}
-
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  marginBottom: "6px",
+                  padding: "8px 10px",
+                  borderRadius: "8px",
+                  border:
+                    answers.coverage === opt
+                      ? "2px solid #111"
+                      : "1px solid #ddd",
+                  background:
+                    answers.coverage === opt ? "#f5f5f5" : "#fff",
+                  fontSize: "0.9rem",
+                  cursor: "pointer",
+                }}
               >
                 {opt}
               </button>
@@ -525,7 +533,9 @@ export default function StyleQuizPage() {
           )}
         </div>
       </form>
-{result && (
+
+      {/* Result block */}
+      {result && (
         <div
           style={{
             marginTop: "16px",
@@ -557,7 +567,7 @@ export default function StyleQuizPage() {
                   fontWeight: 500,
                 }}
               >
-                Styles we think you&apos;ll love:
+                Styles we think you'll love:
               </p>
               <div
                 style={{
@@ -621,10 +631,10 @@ export default function StyleQuizPage() {
               lineHeight: 1.4,
             }}
           >
-            This quiz is a friendly guide based on Megaska&apos;s experience
-            with Indian body types and modest swimwear. You know your body best
-            — if you feel safer one step up in coverage, choose the
-            higher-coverage style.
+            This quiz is a friendly guide based on Megaska's experience with
+            Indian body types and modest swimwear. You know your body best — if
+            you feel safer one step up in coverage, choose the higher-coverage
+            style.
           </p>
         </div>
       )}
