@@ -269,7 +269,7 @@ export default function StyleQuizPage() {
           </p>
         </div>
       </div>
-      <p
+      <p>
         style={{
           fontSize: "0.9rem",
           marginBottom: "14px",
