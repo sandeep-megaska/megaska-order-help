@@ -269,17 +269,7 @@ export default function StyleQuizPage() {
           </p>
         </div>
       </div>
-      <p>
-        style={{
-          fontSize: "0.9rem",
-          marginBottom: "14px",
-          lineHeight: 1.4,
-        }}
-      >
-       <p>
-  Answer a few quick questions and we'll suggest a swimwear style
-  that supports your body, comfort and modesty.
-</p>
+      
 
 
       <form onSubmit={handleSubmit}>
