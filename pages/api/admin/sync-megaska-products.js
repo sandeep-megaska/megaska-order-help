@@ -1,6 +1,7 @@
 // pages/api/admin/sync-megaska-products.js
-import { supabaseAdmin } from "../../lib/supabaseAdmin";
-import { embedText } from "../../lib/openaiEmbeddings";
+import { supabaseAdmin } from "../../../lib/supabaseAdmin";
+import { embedText } from "../../../lib/openaiEmbeddings";
+
 
 export default async function handler(req, res) {
   // optional simple protection
