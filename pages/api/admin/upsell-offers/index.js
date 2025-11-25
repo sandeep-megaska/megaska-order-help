@@ -95,18 +95,34 @@ const accessToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
         variables: { id: variantGid },
       });
 
-     const variant = variantData.productVariant;
+    const variant = variantData.productVariant;
 if (!variant) {
-  return res.status(400).json({ ok: false, error: "Variant not found in Shopify" });
+  return res
+    .status(400)
+    .json({ ok: false, error: "Variant not found in Shopify" });
 }
 
-// In your API version, price is a scalar string like "280.00"
+// price is a scalar string like "280.00"
 const basePrice = parseFloat(variant.price);
-// Megaska is INR-only, so we can safely set this:
 const currencyCode = "INR";
 
 const target = Number(targetPrice);
+
+if (!isFinite(basePrice) || !isFinite(target)) {
+  return res.status(400).json({
+    ok: false,
+    error: "Invalid base price or target price",
+  });
+}
+
 const discountAmount = basePrice - target;
+
+if (discountAmount <= 0) {
+  return res.status(400).json({
+    ok: false,
+    error: "Target price must be less than current price",
+  });
+}
 
 
       if (discountAmount <= 0) {
@@ -122,42 +138,42 @@ const discountAmount = basePrice - target;
       const upsellProductGid = variant.product.id;
       const nowIso = new Date().toISOString();
 
-      const bxgyInput = {
-        title,
-        startsAt: nowIso,
-        endsAt: null,
-        combinesWith: {
-          orderDiscounts: true,
-          productDiscounts: true,
-          shippingDiscounts: true,
+     const bxgyInput = {
+  title,
+  startsAt: nowIso,
+  endsAt: null,
+  combinesWith: {
+    orderDiscounts: true,
+    productDiscounts: true,
+    shippingDiscounts: true,
+  },
+  customerBuys: {
+    items: {
+      products: {
+        productsToAdd: triggerProductGids,
+      },
+    },
+    value: {
+      quantity: 1,
+    },
+  },
+  customerGets: {
+    items: {
+      products: {
+        productsToAdd: [upsellProductGid],
+      },
+    },
+    value: {
+      discountAmount: {
+        amount: {
+          amount: discountAmount.toFixed(2),
+          currencyCode,
         },
-        customerBuys: {
-          items: {
-            products: {
-              productsToAdd: triggerProductGids,
-            },
-          },
-          value: {
-            quantity: 1,
-          },
-        },
-        customerGets: {
-          items: {
-            products: {
-              productsToAdd: [upsellProductGid],
-            },
-          },
-          value: {
-            discountAmount: {
-              amount: {
-                amount: discountAmount.toFixed(2),
-                currencyCode,
-              },
-              appliesOnEachItem: true,
-            },
-          },
-        },
-      };
+        appliesOnEachItem: true,
+      },
+    },
+  },
+};
 
       const createRes = await callShopifyAdmin({
         shop,
