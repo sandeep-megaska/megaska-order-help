@@ -154,7 +154,8 @@ if (discountAmount <= 0) {
       },
     },
     value: {
-      quantity: 1,
+      // UnsignedInt64 must be JSON string
+      quantity: "1",
     },
   },
   customerGets: {
@@ -164,12 +165,16 @@ if (discountAmount <= 0) {
       },
     },
     value: {
-      discountAmount: {
-        amount: {
+      // For BXGY we must use discountOnQuantity, not discountAmount
+      discountOnQuantity: {
+        // how many Y items get discounted
+        quantity: "1",
+        effect: {
+          // Use a fixed amount off that item
+          // DiscountEffectInput.amount is Decimal string
           amount: discountAmount.toFixed(2),
-          currencyCode,
+          // we **don’t** pass currencyCode here; it uses shop currency
         },
-        appliesOnEachItem: true,
       },
     },
   },
