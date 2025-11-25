@@ -1392,6 +1392,7 @@ const shop =
     case "adminCreditWallet":
   return await adminCreditWalletHandler(req, res);
     case "upsellOffers":
+      case "upsell": 
       return await getUpsellOffers(req, res, { shop });
 case "createWalletDiscount":
   return await createWalletDiscountHandler(req, res);
