@@ -494,33 +494,13 @@ export default function StyleQuizPage() {
             Step {step + 1} of 5
           </span>
 
-          {step === 4 && canShowResult ? (
-            <button
-              type="submit"
-              style={{
-                border: "none",
-                background: "transparent",
-                color: "#111",
-                textDecoration: "underline",
-                cursor: "pointer",
-                padding: 0,
-              }}
-            >
-              See my style match
-            </button>
-          ) : (
-            <span />
-          )}
-        </div>
-      </form>
-
-     {result && (
+         {result && (
   <div
     style={{
       marginTop: "16px",
       padding: "12px",
       borderRadius: "10px",
-      border: "1px solid "#e5e5e5",
+      border: "1px solid #e5e5e5",
       fontSize: "0.9rem",
     }}
   >
@@ -537,7 +517,6 @@ export default function StyleQuizPage() {
       ))}
     </ul>
 
-    {/* 🔽 AI-suggested products under the explanation */}
     {result.products && result.products.length > 0 && (
       <div style={{ marginTop: "12px" }}>
         <p
