@@ -1,11 +1,11 @@
 // pages/api/admin/sync-megaska-products.js
+// pages/api/admin/sync-megaska-products.js
 import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 import { embedText } from "../../../lib/openaiEmbeddings";
 
-
 export default async function handler(req, res) {
-  // optional simple protection
-  if (req.method !== "POST") {
+  // Allow both GET and POST for now (easier to trigger from browser)
+  if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
@@ -13,7 +13,6 @@ export default async function handler(req, res) {
     const shop = process.env.SHOPIFY_SHOP_DOMAIN;
     const token = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
 
-    // Start small: get first 100–200 products
     const shopifyRes = await fetch(
       `https://${shop}/admin/api/2025-01/products.json?limit=100`,
       {
@@ -33,14 +32,11 @@ export default async function handler(req, res) {
           ? product.images[0].src
           : null;
 
-      // Build rich text for embedding
       const textParts = [
         product.title,
         product.product_type,
-        product.body_html?.replace(/<[^>]+>/g, " "), // strip HTML
+        product.body_html?.replace(/<[^>]+>/g, " "),
         product.tags,
-        // you can add manual labels here:
-        // e.g. "full length swimwear", "burkini", "modest coverage"
       ].filter(Boolean);
 
       const fullText = textParts.join(". ");
@@ -57,7 +53,7 @@ export default async function handler(req, res) {
             description: product.body_html,
             tags: product.tags,
             image_url: mainImage,
-            collections: [], // can fill later if you map collections
+            collections: [],
             embedding,
           },
           { onConflict: "shopify_product_id" }
