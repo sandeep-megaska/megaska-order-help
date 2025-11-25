@@ -276,9 +276,11 @@ export default function StyleQuizPage() {
           lineHeight: 1.4,
         }}
       >
-        Answer a few quick questions and we&apos;ll suggest a swimwear style
-        that supports your body, comfort and modesty.
-      </p>
+       <p>
+  Answer a few quick questions and we'll suggest a swimwear style
+  that supports your body, comfort and modesty.
+</p>
+
 
       <form onSubmit={handleSubmit}>
         {step === 0 && (
