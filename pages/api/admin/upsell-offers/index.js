@@ -2,14 +2,6 @@
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { callShopifyAdmin } from "../../../../lib/shopify";
 
-
-// TODO: replace with your real session helper
-async function getShopifySession(req, res) {
-  // e.g. from your existing auth middleware
-  // return { shop: 'bigonbuy-fashions.myshopify.com', accessToken: 'shpca_...' };
-  return req.shopifySession; // adjust to your actual implementation
-}
-
 const VARIANT_QUERY = `
   query getVariantPrice($id: ID!) {
     productVariant(id: $id) {
@@ -43,44 +35,48 @@ const CREATE_BXGY_MUTATION = `
 `;
 
 export default async function handler(req, res) {
-  const session = await getShopifySession(req, res);
-  if (!session || !session.shop || !session.accessToken) {
-    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  // 🔑 Use env vars for single-shop setup
+  const shop = process.env.SHOPIFY_SHOP; // e.g. bigonbuy-fashions.myshopify.com
+  const accessToken = process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN; // adjust name to match your env
+
+  if (!shop || !accessToken) {
+    console.error("Missing SHOPIFY_SHOP or SHOPIFY_ADMIN_API_ACCESS_TOKEN env");
+    return res
+      .status(500)
+      .json({ ok: false, error: "Shopify credentials not configured" });
   }
 
-  const { shop, accessToken } = session;
-
-  if (req.method === 'GET') {
+  if (req.method === "GET") {
     try {
       const { data, error } = await supabaseAdmin
-        .from('upsell_offers')
-        .select('*')
-        .eq('shop_domain', shop)
-        .order('created_at', { ascending: false });
+        .from("upsell_offers")
+        .select("*")
+        .eq("shop_domain", shop)
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
 
       return res.status(200).json({ ok: true, offers: data });
     } catch (err) {
-      console.error('List upsell offers error:', err);
-      return res.status(500).json({ ok: false, error: 'Server error' });
+      console.error("List upsell offers error:", err);
+      return res.status(500).json({ ok: false, error: "Server error" });
     }
   }
 
-  if (req.method === 'POST') {
+  if (req.method === "POST") {
     try {
       const {
         title,
-        triggerProductIds,   // [numeric product IDs]
-        upsellProductId,     // numeric product ID
-        upsellVariantId,     // numeric variant ID
-        targetPrice,         // e.g. 150
+        triggerProductIds, // [numeric]
+        upsellProductId,
+        upsellVariantId,
+        targetPrice,
         placementPdp,
         placementCart,
       } = req.body;
 
       if (!title || !triggerProductIds?.length || !upsellVariantId || !targetPrice) {
-        return res.status(400).json({ ok: false, error: 'Missing required fields' });
+        return res.status(400).json({ ok: false, error: "Missing required fields" });
       }
 
       // 1) Get variant price from Shopify
@@ -95,7 +91,7 @@ export default async function handler(req, res) {
 
       const variant = variantData.productVariant;
       if (!variant) {
-        return res.status(400).json({ ok: false, error: 'Variant not found in Shopify' });
+        return res.status(400).json({ ok: false, error: "Variant not found in Shopify" });
       }
 
       const basePrice = parseFloat(variant.price.amount);
@@ -104,18 +100,16 @@ export default async function handler(req, res) {
       const discountAmount = basePrice - target;
 
       if (discountAmount <= 0) {
-        return res.status(400).json({
-          ok: false,
-          error: 'Target price must be less than current price',
-        });
+        return res
+          .status(400)
+          .json({ ok: false, error: "Target price must be less than current price" });
       }
 
-      // 2) Build BXGY input for Shopify
+      // 2) Build BXGY input
       const triggerProductGids = triggerProductIds.map(
         (id) => `gid://shopify/Product/${id}`
       );
-      const upsellProductGid = variant.product.id; // product GID from variant
-
+      const upsellProductGid = variant.product.id;
       const nowIso = new Date().toISOString();
 
       const bxgyInput = {
@@ -165,10 +159,10 @@ export default async function handler(req, res) {
       const payload = createRes.discountAutomaticBxgyCreate;
 
       if (payload.userErrors?.length) {
-        console.error('Discount userErrors:', payload.userErrors);
+        console.error("Discount userErrors:", payload.userErrors);
         return res.status(400).json({
           ok: false,
-          error: payload.userErrors.map((e) => e.message).join(', '),
+          error: payload.userErrors.map((e) => e.message).join(", "),
           details: payload.userErrors,
         });
       }
@@ -178,13 +172,16 @@ export default async function handler(req, res) {
 
       // 3) Insert row in Supabase
       const { data, error } = await supabaseAdmin
-        .from('upsell_offers')
+        .from("upsell_offers")
         .insert({
           shop_domain: shop,
           title,
-          trigger_type: 'product',
+          trigger_type: "product",
           trigger_product_ids: triggerProductIds,
-          upsell_product_id: parseInt(upsellProductId || upsellProductGid.split('/').pop(), 10),
+          upsell_product_id: parseInt(
+            upsellProductId || upsellProductGid.split("/").pop(),
+            10
+          ),
           upsell_variant_id: parseInt(upsellVariantId, 10),
           target_price: target,
           base_price: basePrice,
@@ -202,10 +199,10 @@ export default async function handler(req, res) {
 
       return res.status(200).json({ ok: true, offer: data });
     } catch (err) {
-      console.error('Create upsell offer error:', err);
-      return res.status(500).json({ ok: false, error: 'Server error' });
+      console.error("Create upsell offer error:", err);
+      return res.status(500).json({ ok: false, error: "Server error" });
     }
   }
 
-  return res.status(405).json({ ok: false, error: 'Method not allowed' });
+  return res.status(405).json({ ok: false, error: "Method not allowed" });
 }
