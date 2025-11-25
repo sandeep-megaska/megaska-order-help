@@ -514,54 +514,95 @@ export default function StyleQuizPage() {
         </div>
       </form>
 
-      {result && (
-        <div
+     {result && (
+  <div
+    style={{
+      marginTop: "16px",
+      padding: "12px",
+      borderRadius: "10px",
+      border: "1px solid "#e5e5e5",
+      fontSize: "0.9rem",
+    }}
+  >
+    <strong>Your Megaska match: {result.mainStyle}</strong>
+    <ul
+      style={{
+        marginTop: "8px",
+        paddingLeft: "18px",
+        lineHeight: 1.4,
+      }}
+    >
+      {result.reasons.map((r) => (
+        <li key={r}>{r}</li>
+      ))}
+    </ul>
+
+    {/* 🔽 AI-suggested products under the explanation */}
+    {result.products && result.products.length > 0 && (
+      <div style={{ marginTop: "12px" }}>
+        <p
           style={{
-            marginTop: "16px",
-            padding: "12px",
-            borderRadius: "10px",
-            border: "1px solid #e5e5e5",
             fontSize: "0.9rem",
+            marginBottom: "6px",
+            fontWeight: 500,
           }}
         >
-          <strong>Your Megaska match: {result.mainStyle}</strong>
-          <ul
-            style={{
-              marginTop: "8px",
-              paddingLeft: "18px",
-              lineHeight: 1.4,
-            }}
-          >
-            {result.reasons.map((r) => (
-              <li key={r}>{r}</li>
-            ))}
-          </ul>
-
-          {result.collections?.length > 0 && (
-            <div style={{ marginTop: "10px" }}>
-              {result.collections.map((c) => (
-                <a
-                  key={c.url}
-                  href={c.url}
+          Styles we think you&apos;ll love:
+        </p>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+            gap: "10px",
+          }}
+        >
+          {result.products.map((p) => (
+            <a
+              key={p.url}
+              href={p.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                border: "1px solid #eee",
+                borderRadius: "8px",
+                padding: "6px",
+                textDecoration: "none",
+                color: "#111",
+                fontSize: "0.8rem",
+              }}
+            >
+              {p.image && (
+                <div
                   style={{
-                    display: "inline-block",
-                    marginRight: "8px",
-                    marginBottom: "6px",
-                    padding: "7px 12px",
-                    borderRadius: "999px",
-                    border: "1px solid #ddd",
-                    fontSize: "0.8rem",
-                    textDecoration: "none",
-                    color: "#111",
+                    width: "100%",
+                    paddingBottom: "120%",
+                    position: "relative",
+                    marginBottom: "4px",
+                    overflow: "hidden",
+                    borderRadius: "6px",
                   }}
                 >
-                  {c.label}
-                </a>
-              ))}
-            </div>
-          )}
+                  <img
+                    src={p.image}
+                    alt={p.title}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                    }}
+                  />
+                </div>
+              )}
+              <div>{p.title}</div>
+            </a>
+          ))}
         </div>
-      )}
+      </div>
+    )}
+  </div>
+)}
 
       <p
         style={{
