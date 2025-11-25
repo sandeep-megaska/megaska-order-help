@@ -525,8 +525,7 @@ export default function StyleQuizPage() {
           )}
         </div>
       </form>
-
-      {result && (
+{result && (
         <div
           style={{
             marginTop: "16px",
