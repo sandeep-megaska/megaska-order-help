@@ -36,8 +36,9 @@ const CREATE_BXGY_MUTATION = `
 
 export default async function handler(req, res) {
   // 🔑 Use env vars for single-shop setup
-  const shop = process.env.SHOPIFY_SHOP; // e.g. bigonbuy-fashions.myshopify.com
-  const accessToken = process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN; // adjust name to match your env
+ const shop = process.env.SHOPIFY_SHOP_DOMAIN;
+const accessToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
+
 
   if (!shop || !accessToken) {
     console.error("Missing SHOPIFY_SHOP or SHOPIFY_ADMIN_API_ACCESS_TOKEN env");
