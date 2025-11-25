@@ -1,5 +1,7 @@
 // pages/api/proxy.js
 import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "../../lib/supabaseAdmin";
+
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
@@ -1297,6 +1299,58 @@ async function quizRecommend(req, res) {
 }
 
 // ---- Main handler ----
+async function getUpsellOffers(req, res, { shop }) {
+  try {
+    const { product_id, cart_product_ids, placement } = req.query;
+
+    if (!product_id && !cart_product_ids) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Missing product_id or cart_product_ids',
+      });
+    }
+
+    let query = supabaseAdmin
+      .from('upsell_offers')
+      .select('*')
+      .eq('shop_domain', shop)
+      .eq('status', 'active');
+
+    if (placement === 'pdp') {
+      query = query.eq('placement_pdp', true);
+    } else if (placement === 'cart') {
+      query = query.eq('placement_cart', true);
+    }
+
+    if (product_id) {
+      const pid = parseInt(product_id, 10);
+
+      // Triggered by single product (PDP)
+      query = query.contains('trigger_product_ids', [pid]);
+    } else if (cart_product_ids) {
+      const ids = cart_product_ids
+        .split(',')
+        .map((x) => x.trim())
+        .filter(Boolean)
+        .map((x) => parseInt(x, 10));
+
+      // Any overlap with trigger_product_ids
+      query = query.overlaps('trigger_product_ids', ids);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    return res.status(200).json({
+      ok: true,
+      offers: data || [],
+    });
+  } catch (err) {
+    console.error('getUpsellOffers error:', err);
+    return res.status(500).json({ ok: false, error: 'Server error' });
+  }
+}
 export default async function handler(req, res) {
   setCORS(res);
 
@@ -1304,7 +1358,7 @@ export default async function handler(req, res) {
     res.status(200).end();
     return;
   }
-
+const shop = req.query.shop || process.env.SHOPIFY_SHOP;
   const action = req.query.action || "ping";
 
   console.log("DEBUG_ACTION", action);
@@ -1329,7 +1383,8 @@ export default async function handler(req, res) {
 
     case "adminCreditWallet":
   return await adminCreditWalletHandler(req, res);
-
+    case "upsellOffers":
+      return await getUpsellOffers(req, res, { shop });
 case "createWalletDiscount":
   return await createWalletDiscountHandler(req, res);
     case "quizRecommend":
