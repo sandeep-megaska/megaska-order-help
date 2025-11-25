@@ -1,5 +1,5 @@
 // pages/style-quiz.js
-import { useState } from "react";
+import React, { useState } from "react";
 
 const bodyShapes = [
   "Pear (heavier hips/thighs)",
@@ -42,20 +42,16 @@ const styleVibeOptions = [
   "Colourful & fun prints",
   "Classic dark shades",
 ];
+
+// Build persona text for AI / vector search
 function buildPersonaText(answers) {
-  const {
-    bodyShape,
-    coverage,
-    activity,
-    comforts = [],
-    styleVibe,
-  } = answers;
+  const { bodyShape, coverage, activity, comforts = [], styleVibe } = answers;
 
   return [
     "Indian woman",
     bodyShape || "",
-    `coverage preference: ${coverage || ""}`,
-    `main activity: ${activity || ""}`,
+    coverage ? `coverage preference: ${coverage}` : "",
+    activity ? `main activity: ${activity}` : "",
     comforts.length
       ? `comfort priorities: ${comforts.join(", ")}`
       : "",
@@ -65,6 +61,7 @@ function buildPersonaText(answers) {
     .join(". ");
 }
 
+// Rule-based explanation / style label
 function recommendStyle(answers) {
   const { bodyShape, coverage, activity, comforts = [], styleVibe } = answers;
 
@@ -132,43 +129,30 @@ function recommendStyle(answers) {
   }
 
   if (comforts.includes("Tummy control")) {
-    reasons.push("Look for styles with tummy-control panels or darker mid panels.");
+    reasons.push(
+      "Look for styles with tummy-control panels or darker mid panels."
+    );
   }
   if (comforts.includes("Free movement / sporty")) {
-    reasons.push("Raglan sleeves and stretchy full-length suits are great for movement.");
+    reasons.push(
+      "Raglan sleeves and stretchy full-length suits are great for movement."
+    );
   }
 
   let patternTip = "";
   if (styleVibe === "Simple & elegant") {
     patternTip = "Choose solid colours or subtle patterns in deep or jewel tones.";
   } else if (styleVibe === "Sporty & powerful") {
-    patternTip = "Try colour-blocked or panelled designs that feel energetic and athletic.";
+    patternTip =
+      "Try colour-blocked or panelled designs that feel energetic and athletic.";
   } else if (styleVibe === "Colourful & fun prints") {
-    patternTip = "Go for printed frock styles or burkinis with playful patterns.";
+    patternTip =
+      "Go for printed frock styles or burkinis with playful patterns.";
   } else if (styleVibe === "Classic dark shades") {
-    patternTip = "Deep navy, black and wine shades are timeless, slimming and modest.";
+    patternTip =
+      "Deep navy, black and wine shades are timeless, slimming and modest.";
   }
   if (patternTip) reasons.push(patternTip);
-
-  // TODO: change these URLs to your real collection handles
-  if (mainStyle.includes("Burkini")) {
-    collections.push({
-      label: "Shop Burkini Collection",
-      url: "/collections/burkini",
-    });
-  }
-  if (mainStyle.includes("Full-length")) {
-    collections.push({
-      label: "Shop Full-Length Swimwear",
-      url: "/collections/full-length-swimwear",
-    });
-  }
-  if (mainStyle.includes("Knee-Length") || mainStyle.includes("Frock")) {
-    collections.push({
-      label: "Shop Knee-Length & Frock Styles",
-      url: "/collections/knee-length-swimwear",
-    });
-  }
 
   return { mainStyle, reasons, collections };
 }
@@ -184,12 +168,12 @@ export default function StyleQuizPage() {
   });
   const [result, setResult] = useState(null);
 
-  const goNext = () => setStep((s) => s + 1);
+  const goNext = () => setStep((s) => Math.min(4, s + 1));
   const goPrev = () => setStep((s) => Math.max(0, s - 1));
 
-  const handleAnswer = (field, value) => {
+  const handleAnswer = (field, value, advance = true) => {
     setAnswers((prev) => ({ ...prev, [field]: value }));
-    goNext();
+    if (advance) goNext();
   };
 
   const toggleComfort = (value) => {
@@ -201,52 +185,45 @@ export default function StyleQuizPage() {
     });
   };
 
+  const canShowResult =
+    answers.bodyShape &&
+    answers.coverage &&
+    answers.activity &&
+    answers.styleVibe;
+
   const handleSubmit = (e) => {
-  e.preventDefault();
+    e.preventDefault();
+    if (!canShowResult) return;
 
-  const canShowResult =
-    answers.bodyShape &&
-    answers.coverage &&
-    answers.activity &&
-    answers.styleVibe;
+    const rec = recommendStyle(answers);
+    const personaText = buildPersonaText(answers);
 
-  if (!canShowResult) return;
+    setResult(rec);
 
-  const rec = recommendStyle(answers);
-  const personaText = buildPersonaText(answers);
-
-  setResult(rec);
-
-  // Call backend AI recommendation
-  fetch("/api/style-recommendations", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ persona: personaText }),
-  })
-    .then((res) => res.json())
-    .then((data) => {
-      setResult((prev) => ({
-        ...prev,
-        products: data.products || [],
-      }));
+    // Call backend AI recommendation
+    fetch("/api/style-recommendations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ persona: personaText }),
     })
-    .catch((err) => {
-      console.error("AI recommendation error", err);
-    });
+      .then((res) => res.json())
+      .then((data) => {
+        setResult((prev) => ({
+          ...prev,
+          products: data.products || [],
+        }));
+      })
+      .catch((err) => {
+        console.error("AI recommendation error", err);
+      });
 
-  if (typeof window !== "undefined" && window.parent) {
-    window.parent.postMessage(
-      { type: "MEGASKA_STYLE_SUGGESTION", style: rec.mainStyle },
-      "*"
-    );
-  }
-};
-
-  const canShowResult =
-    answers.bodyShape &&
-    answers.coverage &&
-    answers.activity &&
-    answers.styleVibe;
+    if (typeof window !== "undefined" && window.parent) {
+      window.parent.postMessage(
+        { type: "MEGASKA_STYLE_SUGGESTION", style: rec.mainStyle },
+        "*"
+      );
+    }
+  };
 
   return (
     <div
@@ -327,7 +304,7 @@ export default function StyleQuizPage() {
                   border:
                     answers.coverage === opt
                       ? "2px solid #111"
-                      : "1px solid #ddd",
+                      : "1px solid "#ddd",
                   background:
                     answers.coverage === opt ? "#f5f5f5" : "#fff",
                   fontSize: "0.9rem",
@@ -441,7 +418,9 @@ export default function StyleQuizPage() {
               <button
                 key={opt}
                 type="button"
-                onClick={() => handleAnswer("styleVibe", opt)}
+                onClick={() =>
+                  setAnswers((prev) => ({ ...prev, styleVibe: opt }))
+                }
                 style={{
                   display: "block",
                   width: "100%",
@@ -490,111 +469,131 @@ export default function StyleQuizPage() {
             ← Back
           </button>
 
-          <span>
-            Step {step + 1} of 5
-          </span>
+          <span>Step {step + 1} of 5</span>
 
-         {result && (
-  <div
-    style={{
-      marginTop: "16px",
-      padding: "12px",
-      borderRadius: "10px",
-      border: "1px solid #e5e5e5",
-      fontSize: "0.9rem",
-    }}
-  >
-    <strong>Your Megaska match: {result.mainStyle}</strong>
-    <ul
-      style={{
-        marginTop: "8px",
-        paddingLeft: "18px",
-        lineHeight: 1.4,
-      }}
-    >
-      {result.reasons.map((r) => (
-        <li key={r}>{r}</li>
-      ))}
-    </ul>
-
-    {result.products && result.products.length > 0 && (
-      <div style={{ marginTop: "12px" }}>
-        <p
-          style={{
-            fontSize: "0.9rem",
-            marginBottom: "6px",
-            fontWeight: 500,
-          }}
-        >
-          Styles we think you&apos;ll love:
-        </p>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-            gap: "10px",
-          }}
-        >
-          {result.products.map((p) => (
-            <a
-              key={p.url}
-              href={p.url}
-              target="_blank"
-              rel="noopener noreferrer"
+          {step === 4 && canShowResult ? (
+            <button
+              type="submit"
               style={{
-                border: "1px solid #eee",
-                borderRadius: "8px",
-                padding: "6px",
-                textDecoration: "none",
+                border: "none",
+                background: "transparent",
                 color: "#111",
-                fontSize: "0.8rem",
+                textDecoration: "underline",
+                cursor: "pointer",
+                padding: 0,
               }}
             >
-              {p.image && (
-                <div
-                  style={{
-                    width: "100%",
-                    paddingBottom: "120%",
-                    position: "relative",
-                    marginBottom: "4px",
-                    overflow: "hidden",
-                    borderRadius: "6px",
-                  }}
-                >
-                  <img
-                    src={p.image}
-                    alt={p.title}
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                    }}
-                  />
-                </div>
-              )}
-              <div>{p.title}</div>
-            </a>
-          ))}
+              See my style match
+            </button>
+          ) : (
+            <span />
+          )}
         </div>
-      </div>
-    )}
-  </div>
-)}
+      </form>
 
-      <p
-        style={{
-          marginTop: "14px",
-          fontSize: "0.75rem",
-          opacity: 0.7,
-          lineHeight: 1.4,
-        }}
-      >
-        This quiz is a friendly guide based on Megaska&apos;s experience with
-        Indian body types and modest swimwear. You know your body best — if you
-        feel safer one step up in coverage, choose the higher-coverage style.
-      </p>
+      {result && (
+        <div
+          style={{
+            marginTop: "16px",
+            padding: "12px",
+            borderRadius: "10px",
+            border: "1px solid #e5e5e5",
+            fontSize: "0.9rem",
+          }}
+        >
+          <strong>Your Megaska match: {result.mainStyle}</strong>
+          <ul
+            style={{
+              marginTop: "8px",
+              paddingLeft: "18px",
+              lineHeight: 1.4,
+            }}
+          >
+            {result.reasons.map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ul>
+
+          {result.products && result.products.length > 0 && (
+            <div style={{ marginTop: "12px" }}>
+              <p
+                style={{
+                  fontSize: "0.9rem",
+                  marginBottom: "6px",
+                  fontWeight: 500,
+                }}
+              >
+                Styles we think you&apos;ll love:
+              </p>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(140px, 1fr))",
+                  gap: "10px",
+                }}
+              >
+                {result.products.map((p) => (
+                  <a
+                    key={p.url}
+                    href={p.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      border: "1px solid #eee",
+                      borderRadius: "8px",
+                      padding: "6px",
+                      textDecoration: "none",
+                      color: "#111",
+                      fontSize: "0.8rem",
+                    }}
+                  >
+                    {p.image && (
+                      <div
+                        style={{
+                          width: "100%",
+                          paddingBottom: "120%",
+                          position: "relative",
+                          marginBottom: "4px",
+                          overflow: "hidden",
+                          borderRadius: "6px",
+                        }}
+                      >
+                        <img
+                          src={p.image}
+                          alt={p.title}
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                          }}
+                        />
+                      </div>
+                    )}
+                    <div>{p.title}</div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <p
+            style={{
+              marginTop: "14px",
+              fontSize: "0.75rem",
+              opacity: 0.7,
+              lineHeight: 1.4,
+            }}
+          >
+            This quiz is a friendly guide based on Megaska&apos;s experience
+            with Indian body types and modest swimwear. You know your body best
+            — if you feel safer one step up in coverage, choose the
+            higher-coverage style.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
