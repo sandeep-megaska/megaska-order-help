@@ -6,11 +6,12 @@ const VARIANT_QUERY = `
   query getVariantPrice($id: ID!) {
     productVariant(id: $id) {
       id
-      price { amount currencyCode }
+      price
       product { id title }
     }
   }
 `;
+
 
 const CREATE_BXGY_MUTATION = `
   mutation createUpsellBxgy($input: DiscountAutomaticBxgyInput!) {
