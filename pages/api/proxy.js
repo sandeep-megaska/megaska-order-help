@@ -1358,7 +1358,15 @@ export default async function handler(req, res) {
     res.status(200).end();
     return;
   }
-const shop = req.query.shop || process.env.SHOPIFY_SHOP;
+const shop =
+    req.query.shop ||
+    process.env.SHOPIFY_SHOP_DOMAIN || // your real env
+    process.env.SHOPIFY_SHOP;          // fallback if exists
+
+  if (!shop) {
+    console.error("No shop domain found in proxy handler");
+    return res.status(500).json({ ok: false, error: "Missing shop domain" });
+  }
   const action = req.query.action || "ping";
 
   console.log("DEBUG_ACTION", action);
