@@ -59,9 +59,13 @@ const accessToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
 
       return res.status(200).json({ ok: true, offers: data });
     } catch (err) {
-      console.error("List upsell offers error:", err);
-      return res.status(500).json({ ok: false, error: "Server error" });
-    }
+  console.error("Create upsell offer error:", err);
+  return res.status(500).json({
+    ok: false,
+    error: err.message || "Server error",
+  });
+}
+
   }
 
   if (req.method === "POST") {
@@ -199,10 +203,14 @@ const accessToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
       if (error) throw error;
 
       return res.status(200).json({ ok: true, offer: data });
-    } catch (err) {
-      console.error("Create upsell offer error:", err);
-      return res.status(500).json({ ok: false, error: "Server error" });
-    }
+   } catch (err) {
+  console.error("List upsell offers error:", err);
+  return res.status(500).json({
+    ok: false,
+    error: err.message || "Server error",
+  });
+}
+
   }
 
   return res.status(405).json({ ok: false, error: "Method not allowed" });
