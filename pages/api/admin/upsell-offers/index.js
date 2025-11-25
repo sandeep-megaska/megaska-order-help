@@ -95,15 +95,19 @@ const accessToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
         variables: { id: variantGid },
       });
 
-      const variant = variantData.productVariant;
-      if (!variant) {
-        return res.status(400).json({ ok: false, error: "Variant not found in Shopify" });
-      }
+     const variant = variantData.productVariant;
+if (!variant) {
+  return res.status(400).json({ ok: false, error: "Variant not found in Shopify" });
+}
 
-      const basePrice = parseFloat(variant.price.amount);
-      const currencyCode = variant.price.currencyCode;
-      const target = Number(targetPrice);
-      const discountAmount = basePrice - target;
+// In your API version, price is a scalar string like "280.00"
+const basePrice = parseFloat(variant.price);
+// Megaska is INR-only, so we can safely set this:
+const currencyCode = "INR";
+
+const target = Number(targetPrice);
+const discountAmount = basePrice - target;
+
 
       if (discountAmount <= 0) {
         return res
