@@ -42,6 +42,28 @@ const styleVibeOptions = [
   "Colourful & fun prints",
   "Classic dark shades",
 ];
+function buildPersonaText(answers) {
+  const {
+    bodyShape,
+    coverage,
+    activity,
+    comforts = [],
+    styleVibe,
+  } = answers;
+
+  return [
+    "Indian woman",
+    bodyShape || "",
+    `coverage preference: ${coverage || ""}`,
+    `main activity: ${activity || ""}`,
+    comforts.length
+      ? `comfort priorities: ${comforts.join(", ")}`
+      : "",
+    styleVibe ? `style vibe: ${styleVibe}` : "",
+  ]
+    .filter(Boolean)
+    .join(". ");
+}
 
 function recommendStyle(answers) {
   const { bodyShape, coverage, activity, comforts = [], styleVibe } = answers;
@@ -180,20 +202,45 @@ export default function StyleQuizPage() {
   };
 
   const handleSubmit = (e) => {
-    e.preventDefault();
-    const rec = recommendStyle(answers);
-    setResult(rec);
+  e.preventDefault();
 
-    if (typeof window !== "undefined" && window.parent) {
-      window.parent.postMessage(
-        {
-          type: "MEGASKA_STYLE_SUGGESTION",
-          style: rec.mainStyle,
-        },
-        "*"
-      );
-    }
-  };
+  const canShowResult =
+    answers.bodyShape &&
+    answers.coverage &&
+    answers.activity &&
+    answers.styleVibe;
+
+  if (!canShowResult) return;
+
+  const rec = recommendStyle(answers);
+  const personaText = buildPersonaText(answers);
+
+  setResult(rec);
+
+  // Call backend AI recommendation
+  fetch("/api/style-recommendations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ persona: personaText }),
+  })
+    .then((res) => res.json())
+    .then((data) => {
+      setResult((prev) => ({
+        ...prev,
+        products: data.products || [],
+      }));
+    })
+    .catch((err) => {
+      console.error("AI recommendation error", err);
+    });
+
+  if (typeof window !== "undefined" && window.parent) {
+    window.parent.postMessage(
+      { type: "MEGASKA_STYLE_SUGGESTION", style: rec.mainStyle },
+      "*"
+    );
+  }
+};
 
   const canShowResult =
     answers.bodyShape &&
