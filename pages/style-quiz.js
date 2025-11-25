@@ -295,21 +295,22 @@ export default function StyleQuizPage() {
                 type="button"
                 onClick={() => handleAnswer("coverage", opt)}
                 style={{
-                  display: "block",
-                  width: "100%",
-                  textAlign: "left",
-                  marginBottom: "6px",
-                  padding: "8px 10px",
-                  borderRadius: "8px",
-                  border:
-                    answers.coverage === opt
-                      ? "2px solid #111"
-                      : "1px solid "#ddd",
-                  background:
-                    answers.coverage === opt ? "#f5f5f5" : "#fff",
-                  fontSize: "0.9rem",
-                  cursor: "pointer",
-                }}
+  display: "block",
+  width: "100%",
+  textAlign: "left",
+  marginBottom: "6px",
+  padding: "8px 10px",
+  borderRadius: "8px",
+  border:
+    answers.coverage === opt
+      ? "2px solid #111"
+      : "1px solid #ddd",
+  background:
+    answers.coverage === opt ? "#f5f5f5" : "#fff",
+  fontSize: "0.9rem",
+  cursor: "pointer",
+}}
+
               >
                 {opt}
               </button>
