@@ -226,17 +226,49 @@ export default function StyleQuizPage() {
   };
 
   return (
-    <div
-      style={{
-        fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-        padding: "20px",
-        maxWidth: "460px",
-        margin: "0 auto",
-      }}
-    >
-      <h1 style={{ fontSize: "1.4rem", marginBottom: "6px" }}>
-        Megaska Body Confidence Quiz
-      </h1>
+         <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          marginBottom: "8px",
+        }}
+      >
+        <div
+          style={{
+            width: "28px",
+            height: "28px",
+            borderRadius: "999px",
+            background:
+              "radial-gradient(circle at 30% 30%, #ffffff, #ffe4ff 40%, #d9d6ff 80%)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "14px",
+          }}
+        >
+          ✨
+        </div>
+        <div>
+          <h1
+            style={{
+              fontSize: "1.3rem",
+              margin: 0,
+            }}
+          >
+            Megaska AI Stylist
+          </h1>
+          <p
+            style={{
+              fontSize: "0.8rem",
+              margin: 0,
+              opacity: 0.8,
+            }}
+          >
+            Body Confidence Quiz for Indian women
+          </p>
+        </div>
+      </div>
       <p
         style={{
           fontSize: "0.9rem",
