@@ -1326,6 +1326,7 @@ async function getUpsellOffers(req, res, { shop }) {
 
     if (product_id) {
       const pid = parseInt(product_id, 10);
+      // PDP trigger
       query = query.contains("trigger_product_ids", [pid]);
     } else if (cart_product_ids) {
       const ids = cart_product_ids
@@ -1334,6 +1335,7 @@ async function getUpsellOffers(req, res, { shop }) {
         .filter(Boolean)
         .map((x) => parseInt(x, 10));
 
+      // Cart overlap
       query = query.overlaps("trigger_product_ids", ids);
     }
 
@@ -1342,10 +1344,13 @@ async function getUpsellOffers(req, res, { shop }) {
 
     let offers = data || [];
 
-    // 🔹 Enrich offers with Shopify product info
+    // 🔹 Enrich each offer with Shopify product info
     offers = await Promise.all(
       offers.map(async (offer) => {
-        const enriched = { ...offer };
+        const enriched = {
+          ...offer,
+          debug_source: "upsell-v2", // <-- so we can see new code in JSON
+        };
 
         try {
           if (offer.upsell_product_id) {
@@ -1372,7 +1377,7 @@ async function getUpsellOffers(req, res, { shop }) {
               enriched.upsell_product_title = p.title;
               enriched.upsell_product_handle = p.handle;
               enriched.upsell_product_url =
-                p.onlineStoreUrl || `https://${shop}/products/${p.handle}`;
+                p.onlineStoreUrl || \`https://${shop}/products/\${p.handle}\`;
               enriched.upsell_product_image_url = p.featuredImage?.url || null;
               enriched.upsell_product_image_alt =
                 p.featuredImage?.altText || p.title || "";
@@ -1380,6 +1385,7 @@ async function getUpsellOffers(req, res, { shop }) {
           }
         } catch (err) {
           console.error("UPSELL_ENRICH_ERROR", err);
+          // We still return base offer even if enrichment fails
         }
 
         return enriched;
