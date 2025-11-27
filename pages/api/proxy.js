@@ -1300,6 +1300,7 @@ async function quizRecommend(req, res) {
 
 // ---- Main handler ----
 // ---- Get Upsell Offers (with Shopify product enrichment) ----
+// ---- Get Upsell Offers (with Shopify product enrichment) ----
 async function getUpsellOffers(req, res, { shop }) {
   try {
     const { product_id, cart_product_ids, placement } = req.query;
@@ -1311,7 +1312,6 @@ async function getUpsellOffers(req, res, { shop }) {
       });
     }
 
-    // Base Supabase query
     let query = supabaseAdmin
       .from("upsell_offers")
       .select("*")
@@ -1326,7 +1326,7 @@ async function getUpsellOffers(req, res, { shop }) {
 
     if (product_id) {
       const pid = parseInt(product_id, 10);
-      query = query.contains("trigger_product_ids", [pid]); // PDP trigger
+      query = query.contains("trigger_product_ids", [pid]);
     } else if (cart_product_ids) {
       const ids = cart_product_ids
         .split(",")
@@ -1334,7 +1334,7 @@ async function getUpsellOffers(req, res, { shop }) {
         .filter(Boolean)
         .map((x) => parseInt(x, 10));
 
-      query = query.overlaps("trigger_product_ids", ids); // Cart overlap
+      query = query.overlaps("trigger_product_ids", ids);
     }
 
     const { data, error } = await query;
@@ -1342,7 +1342,7 @@ async function getUpsellOffers(req, res, { shop }) {
 
     let offers = data || [];
 
-    // 🔹 Enrich each offer with Shopify product info (image, title, url)
+    // 🔹 Enrich offers with Shopify product info
     offers = await Promise.all(
       offers.map(async (offer) => {
         const enriched = { ...offer };
@@ -1380,7 +1380,6 @@ async function getUpsellOffers(req, res, { shop }) {
           }
         } catch (err) {
           console.error("UPSELL_ENRICH_ERROR", err);
-          // We still return the base offer even if enrichment fails
         }
 
         return enriched;
