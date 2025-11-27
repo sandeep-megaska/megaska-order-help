@@ -1,212 +1,373 @@
 // pages/api/admin/upsell-offers.js
-import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 
-const SHOP_DOMAIN =
-  process.env.SHOPIFY_SHOP_DOMAIN || "bigonbuy-fashions.myshopify.com";
+import { createClient } from '@supabase/supabase-js';
 
-// If you don't use an admin token yet, leave this empty
-const ADMIN_TOKEN_HEADER = "x-megaska-admin-token";
-const ADMIN_TOKEN = process.env.ADMIN_DASHBOARD_TOKEN || "";
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const adminTokenEnv = process.env.ADMIN_DASHBOARD_TOKEN;
 
-// ---- Small helpers ----
-function parseIdArray(raw) {
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map((n) => Number(n)).filter(Boolean);
-  return String(raw)
-    .split(",")
-    .map((s) => s.trim())
-    .map((n) => Number(n))
-    .filter(Boolean);
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.warn('[UPSSELL ADMIN] Missing Supabase env vars');
 }
 
-function parseHandleArray(raw) {
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map((s) => String(s).trim()).filter(Boolean);
-  return String(raw)
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+// ---- Helpers ----
+
+function getAdminTokenFromRequest(req) {
+  const headerToken =
+    req.headers['x-admin-token'] ||
+    req.headers['x-admin-dashboard-token'] ||
+    '';
+
+  const authHeader = req.headers.authorization || '';
+  const bearerToken = authHeader.startsWith('Bearer ')
+    ? authHeader.slice('Bearer '.length)
+    : '';
+
+  return headerToken || bearerToken || '';
 }
 
-function parseNumberOrNull(val) {
-  if (val === null || val === undefined || val === "") return null;
-  const n = Number(val);
-  return Number.isFinite(n) ? n : null;
+function normalizeArray(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    // Try JSON parse if it looks like ["a","b"]
+    const trimmed = value.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        // ignore and fall through
+      }
+    }
+    // Fallback: comma-separated string → array
+    if (trimmed.includes(',')) {
+      return trimmed
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+    return [trimmed];
+  }
+  return [value];
 }
+
+/**
+ * Compute numeric prices from the request body.
+ *
+ * Accepts:
+ * - base_price / basePrice
+ * - target_price / targetPrice
+ * Computes:
+ * - discount_amount = base_price - target_price (if both present)
+ */
+function derivePriceFields(body) {
+  const basePriceRaw =
+    body.base_price != null
+      ? body.base_price
+      : body.basePrice != null
+      ? body.basePrice
+      : null;
+
+  const targetPriceRaw =
+    body.target_price != null
+      ? body.target_price
+      : body.targetPrice != null
+      ? body.targetPrice
+      : null;
+
+  const basePriceNum =
+    basePriceRaw !== null && basePriceRaw !== undefined
+      ? Number(basePriceRaw)
+      : null;
+
+  const targetPriceNum =
+    targetPriceRaw !== null && targetPriceRaw !== undefined
+      ? Number(targetPriceRaw)
+      : null;
+
+  let discountAmountNum = null;
+  if (
+    basePriceNum !== null &&
+    !Number.isNaN(basePriceNum) &&
+    targetPriceNum !== null &&
+    !Number.isNaN(targetPriceNum)
+  ) {
+    discountAmountNum = basePriceNum - targetPriceNum;
+  }
+
+  return {
+    base_price: basePriceNum,
+    target_price: targetPriceNum,
+    discount_amount: discountAmountNum,
+  };
+}
+
+// ---- Main handler ----
 
 export default async function handler(req, res) {
-  // 🔐 Optional gate; if no ADMIN_TOKEN set, this is skipped
-  if (ADMIN_TOKEN) {
-    const token = req.headers[ADMIN_TOKEN_HEADER];
-    if (!token || token !== ADMIN_TOKEN) {
-      return res.status(401).json({
-        ok: false,
-        error: "ADMIN_UNAUTHORIZED",
-      });
-    }
+  // CORS preflight (if needed)
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader(
+      'Access-Control-Allow-Methods',
+      'GET,POST,PUT,DELETE,OPTIONS'
+    );
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, X-Admin-Token, X-Admin-Dashboard-Token'
+    );
+    return res.status(200).end();
   }
 
-  // Simple health check
-  if (req.method === "GET") {
-    try {
-      const { data, error } = await supabaseAdmin
-        .from("upsell_offers")
-        .select("*")
-        .eq("shop_domain", SHOP_DOMAIN)
-        .order("created_at", { ascending: false });
+  // Basic CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
 
-      if (error) {
-        console.error("[UPSELL_LIST_SUPABASE_ERROR]", error);
-        return res.status(500).json({
-          ok: false,
-          error: error.message || "LIST_FAILED",
-        });
-      }
-
-      return res.status(200).json({ ok: true, offers: data || [] });
-    } catch (err) {
-      console.error("[UPSELL_LIST_FATAL]", err);
-      return res.status(500).json({
-        ok: false,
-        error: err.message || "LIST_FATAL",
-      });
-    }
+  // Auth check
+  const incomingToken = getAdminTokenFromRequest(req);
+  if (!adminTokenEnv || !incomingToken || incomingToken !== adminTokenEnv) {
+    return res.status(401).json({
+      ok: false,
+      error: 'Unauthorized: invalid admin token',
+    });
   }
 
-  if (req.method === "POST" || req.method === "PUT") {
-    console.log("[UPSELL_ADMIN_RAW_BODY]", req.body);
+  try {
+    switch (req.method) {
+      // ----------------- GET: List offers -----------------
+      case 'GET': {
+        const { shop_domain } = req.query;
 
-    try {
-      const {
-        id,
-        status = "active",
-        trigger_type = "collection",
-        trigger_product_ids,
-        trigger_collection_handles,
+        let query = supabase
+          .from('upsell_offers')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-        upsell_product_id,
-        upsell_variant_id,
-        base_price,
-        target_price,
+        if (shop_domain) {
+          query = query.eq('shop_domain', shop_domain);
+        }
 
-        placement_pdp = true,
-        placement_cart = false,
+        const { data, error } = await query;
 
-        title,
-        box_title,
-        box_subtitle,
-        box_button_label,
-      } = req.body || {};
-
-      const upsellProductIdNum = parseNumberOrNull(upsell_product_id);
-      const upsellVariantIdNum = parseNumberOrNull(upsell_variant_id);
-      const basePriceNum = parseNumberOrNull(base_price);
-      const targetPriceNum = parseNumberOrNull(target_price);
-
-      const triggerProductIds = parseIdArray(trigger_product_ids);
-      const triggerCollectionHandles = parseHandleArray(
-        trigger_collection_handles
-      );
-
-      // 🔴 Validation with explicit messages (NO "Missing required fields")
-      if (!upsellProductIdNum || !targetPriceNum) {
-        return res.status(400).json({
-          ok: false,
-          error: "REQUIRED: upsell_product_id and target_price",
-        });
-      }
-
-      if (trigger_type === "product" && triggerProductIds.length === 0) {
-        return res.status(400).json({
-          ok: false,
-          error: "REQUIRED: at least one trigger_product_id",
-        });
-      }
-
-      if (
-        trigger_type === "collection" &&
-        triggerCollectionHandles.length === 0
-      ) {
-        return res.status(400).json({
-          ok: false,
-          error: "REQUIRED: at least one trigger_collection_handle",
-        });
-      }
-
-      const discountAmount =
-        basePriceNum && targetPriceNum
-          ? basePriceNum - targetPriceNum
-          : null;
-
-      const row = {
-        shop_domain: SHOP_DOMAIN,
-
-        status,
-        trigger_type,
-
-        trigger_product_ids:
-          trigger_type === "product" ? triggerProductIds : [],
-        trigger_collection_handles:
-          trigger_type === "collection" ? triggerCollectionHandles : [],
-
-        upsell_product_id: upsellProductIdNum,
-        upsell_variant_id: upsellVariantIdNum,
-        base_price: basePriceNum,
-        target_price: targetPriceNum,
-        discount_amount: discountAmount,
-
-        placement_pdp: !!placement_pdp,
-        placement_cart: !!(placement_cart && placement_cart !== "false"),
-
-        title: title || null,
-        box_title: box_title || null,
-        box_subtitle: box_subtitle || null,
-        box_button_label: box_button_label || null,
-      };
-
-      console.log("[UPSELL_ADMIN_COMPUTED_ROW]", row);
-
-      let result;
-      if (req.method === "POST") {
-        result = await supabaseAdmin
-          .from("upsell_offers")
-          .insert(row)
-          .select()
-          .single();
-      } else {
-        if (!id) {
-          return res.status(400).json({
+        if (error) {
+          console.error('[UPSELL ADMIN GET] Supabase error', error);
+          return res.status(500).json({
             ok: false,
-            error: "REQUIRED: id for UPDATE",
+            error: 'Failed to fetch upsell offers',
           });
         }
-        result = await supabaseAdmin
-          .from("upsell_offers")
-          .update(row)
-          .eq("id", id)
-          .select()
+
+        return res.status(200).json({ ok: true, offers: data || [] });
+      }
+
+      // ----------------- POST: Create offer -----------------
+      case 'POST': {
+        const body = req.body || {};
+
+        const {
+          shop_domain,
+          title,
+          status = 'active',
+          trigger_type,
+          trigger_collection_handles,
+          trigger_product_ids,
+          upsell_product_id,
+          upsell_variant_id,
+          placement_pdp,
+          placement_cart,
+          box_title,
+          box_subtitle,
+          box_button_label,
+        } = body;
+
+        // Validate minimum required fields
+        if (!shop_domain || !title || !trigger_type || !upsell_variant_id) {
+          return res.status(400).json({
+            ok: false,
+            error:
+              'Missing required fields: shop_domain, title, trigger_type, upsell_variant_id',
+          });
+        }
+
+        // Price fields
+        const priceFields = derivePriceFields(body);
+        const { base_price, target_price, discount_amount } = priceFields;
+
+        // Some basic logic: if trigger_type = "product", require product IDs
+        const triggerType = trigger_type;
+        const triggerCollectionHandles = normalizeArray(
+          trigger_collection_handles
+        );
+        const triggerProductIds = normalizeArray(trigger_product_ids);
+
+        if (triggerType === 'product' && triggerProductIds.length === 0) {
+          return res.status(400).json({
+            ok: false,
+            error:
+              'trigger_type=product requires at least one trigger_product_id',
+          });
+        }
+
+        const { data, error } = await supabase
+          .from('upsell_offers')
+          .insert([
+            {
+              shop_domain,
+              title,
+              status,
+              trigger_type: triggerType,
+              trigger_collection_handles: triggerCollectionHandles,
+              trigger_product_ids: triggerProductIds,
+              upsell_product_id,
+              upsell_variant_id,
+              target_price,
+              base_price,
+              discount_amount,
+              placement_pdp: !!placement_pdp,
+              placement_cart: !!placement_cart,
+              box_title,
+              box_subtitle,
+              box_button_label,
+            },
+          ])
+          .select('*')
           .single();
+
+        if (error) {
+          console.error('[UPSELL ADMIN POST] Supabase error', error);
+          return res.status(500).json({
+            ok: false,
+            error: 'Failed to create upsell offer',
+          });
+        }
+
+        return res.status(200).json({ ok: true, offer: data });
       }
 
-      const { data, error } = result;
-      if (error) {
-        console.error("[UPSELL_ADMIN_SUPABASE_ERROR]", error);
-        return res.status(500).json({
+      // ----------------- PUT: Update offer -----------------
+      case 'PUT': {
+        const body = req.body || {};
+        const { id } = body;
+
+        if (!id) {
+          return res
+            .status(400)
+            .json({ ok: false, error: 'Missing offer id for update' });
+        }
+
+        const {
+          title,
+          status,
+          trigger_type,
+          trigger_collection_handles,
+          trigger_product_ids,
+          upsell_product_id,
+          upsell_variant_id,
+          placement_pdp,
+          placement_cart,
+          box_title,
+          box_subtitle,
+          box_button_label,
+        } = body;
+
+        const priceFields = derivePriceFields(body);
+        const { base_price, target_price, discount_amount } = priceFields;
+
+        const updatePayload = {
+          // Only set if provided; otherwise leave unchanged
+        };
+
+        if (title !== undefined) updatePayload.title = title;
+        if (status !== undefined) updatePayload.status = status;
+        if (trigger_type !== undefined)
+          updatePayload.trigger_type = trigger_type;
+        if (trigger_collection_handles !== undefined)
+          updatePayload.trigger_collection_handles = normalizeArray(
+            trigger_collection_handles
+          );
+        if (trigger_product_ids !== undefined)
+          updatePayload.trigger_product_ids = normalizeArray(
+            trigger_product_ids
+          );
+        if (upsell_product_id !== undefined)
+          updatePayload.upsell_product_id = upsell_product_id;
+        if (upsell_variant_id !== undefined)
+          updatePayload.upsell_variant_id = upsell_variant_id;
+
+        if (target_price !== null) updatePayload.target_price = target_price;
+        if (base_price !== null) updatePayload.base_price = base_price;
+        if (discount_amount !== null)
+          updatePayload.discount_amount = discount_amount;
+
+        if (placement_pdp !== undefined)
+          updatePayload.placement_pdp = !!placement_pdp;
+        if (placement_cart !== undefined)
+          updatePayload.placement_cart = !!placement_cart;
+
+        if (box_title !== undefined) updatePayload.box_title = box_title;
+        if (box_subtitle !== undefined)
+          updatePayload.box_subtitle = box_subtitle;
+        if (box_button_label !== undefined)
+          updatePayload.box_button_label = box_button_label;
+
+        const { data, error } = await supabase
+          .from('upsell_offers')
+          .update(updatePayload)
+          .eq('id', id)
+          .select('*')
+          .single();
+
+        if (error) {
+          console.error('[UPSELL ADMIN PUT] Supabase error', error);
+          return res.status(500).json({
+            ok: false,
+            error: 'Failed to update upsell offer',
+          });
+        }
+
+        return res.status(200).json({ ok: true, offer: data });
+      }
+
+      // ----------------- DELETE: Delete offer -----------------
+      case 'DELETE': {
+        const { id } = req.query;
+
+        if (!id) {
+          return res
+            .status(400)
+            .json({ ok: false, error: 'Missing offer id for delete' });
+        }
+
+        const { error } = await supabase
+          .from('upsell_offers')
+          .delete()
+          .eq('id', id);
+
+        if (error) {
+          console.error('[UPSELL ADMIN DELETE] Supabase error', error);
+          return res.status(500).json({
+            ok: false,
+            error: 'Failed to delete upsell offer',
+          });
+        }
+
+        return res.status(200).json({ ok: true, deleted_id: id });
+      }
+
+      // ----------------- Unsupported method -----------------
+      default:
+        return res.status(405).json({
           ok: false,
-          error: error.message || "SUPABASE_SAVE_FAILED",
+          error: `Method ${req.method} not allowed`,
         });
-      }
-
-      return res.status(200).json({ ok: true, offer: data });
-    } catch (err) {
-      console.error("[UPSELL_ADMIN_SAVE_FATAL]", err);
-      return res.status(500).json({
-        ok: false,
-        error: err.message || "SAVE_FATAL",
-      });
     }
+  } catch (err) {
+    console.error('[UPSELL ADMIN] Unhandled error', err);
+    return res.status(500).json({
+      ok: false,
+      error: 'Unexpected server error',
+    });
   }
-
-  res.setHeader("Allow", "GET,POST,PUT");
-  return res.status(405).json({ ok: false, error: "METHOD_NOT_ALLOWED" });
 }
