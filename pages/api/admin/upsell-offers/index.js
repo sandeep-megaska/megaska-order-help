@@ -1,243 +1,213 @@
 // pages/api/admin/upsell-offers/index.js
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
-import { callShopifyAdmin } from "../../../../lib/shopify";
 
-const VARIANT_QUERY = `
-  query getVariantPrice($id: ID!) {
-    productVariant(id: $id) {
-      id
-      price
-      product { id title }
-    }
-  }
-`;
+const SHOP_DOMAIN =
+  process.env.SHOPIFY_SHOP_DOMAIN || "bigonbuy-fashions.myshopify.com";
 
+// Optional admin token (if you don't use it, leave env empty)
+const ADMIN_TOKEN_HEADER = "x-megaska-admin-token";
+const ADMIN_TOKEN = process.env.ADMIN_DASHBOARD_TOKEN || "";
 
-const CREATE_BXGY_MUTATION = `
-  mutation createUpsellBxgy($input: DiscountAutomaticBxgyInput!) {
-    discountAutomaticBxgyCreate(automaticBxgyDiscount: $input) {
-      automaticDiscountNode {
-        id
-        automaticDiscount {
-          __typename
-          ... on DiscountAutomaticBxgy {
-            id
-            title
-            status
-          }
-        }
-      }
-      userErrors {
-        field
-        message
-      }
-    }
-  }
-`;
+// ---- Helpers ----
+function parseIdArray(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map((n) => Number(n)).filter(Boolean);
+  return String(raw)
+    .split(",")
+    .map((s) => s.trim())
+    .map((n) => Number(n))
+    .filter(Boolean);
+}
+
+function parseHandleArray(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map((s) => String(s).trim()).filter(Boolean);
+  return String(raw)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function parseNumberOrNull(val) {
+  if (val === null || val === undefined || val === "") return null;
+  const n = Number(val);
+  return Number.isFinite(n) ? n : null;
+}
 
 export default async function handler(req, res) {
-  // 🔑 Use env vars for single-shop setup
- const shop = process.env.SHOPIFY_SHOP_DOMAIN;
-const accessToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
-
-
-  if (!shop || !accessToken) {
-    console.error("Missing SHOPIFY_SHOP or SHOPIFY_ADMIN_API_ACCESS_TOKEN env");
-    return res
-      .status(500)
-      .json({ ok: false, error: "Shopify credentials not configured" });
+  // 🔐 Admin gate – only enforced if ADMIN_TOKEN is set
+  if (ADMIN_TOKEN) {
+    const token = req.headers[ADMIN_TOKEN_HEADER];
+    if (!token || token !== ADMIN_TOKEN) {
+      return res.status(401).json({
+        ok: false,
+        error: "ADMIN_UNAUTHORIZED",
+      });
+    }
   }
 
+  // ---- GET: list offers ----
   if (req.method === "GET") {
     try {
       const { data, error } = await supabaseAdmin
         .from("upsell_offers")
         .select("*")
-        .eq("shop_domain", shop)
+        .eq("shop_domain", SHOP_DOMAIN)
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-
-      return res.status(200).json({ ok: true, offers: data });
-    } catch (err) {
-  console.error("Create upsell offer error:", err);
-  return res.status(500).json({
-    ok: false,
-    error: err.message || "Server error",
-  });
-}
-
-  }
-
-  if (req.method === "POST") {
-    try {
-      const {
-        title,
-        triggerProductIds, // [numeric]
-        upsellProductId,
-        upsellVariantId,
-        targetPrice,
-        placementPdp,
-        placementCart,
-      } = req.body;
-
-      if (!title || !triggerProductIds?.length || !upsellVariantId || !targetPrice) {
-        return res.status(400).json({ ok: false, error: "Missing required fields" });
-      }
-
-      // 1) Get variant price from Shopify
-      const variantGid = `gid://shopify/ProductVariant/${upsellVariantId}`;
-
-      const variantData = await callShopifyAdmin({
-        shop,
-        accessToken,
-        query: VARIANT_QUERY,
-        variables: { id: variantGid },
-      });
-
-    const variant = variantData.productVariant;
-if (!variant) {
-  return res
-    .status(400)
-    .json({ ok: false, error: "Variant not found in Shopify" });
-}
-
-// price is a scalar string like "280.00"
-const basePrice = parseFloat(variant.price);
-const currencyCode = "INR";
-
-const target = Number(targetPrice);
-
-if (!isFinite(basePrice) || !isFinite(target)) {
-  return res.status(400).json({
-    ok: false,
-    error: "Invalid base price or target price",
-  });
-}
-
-const discountAmount = basePrice - target;
-
-if (discountAmount <= 0) {
-  return res.status(400).json({
-    ok: false,
-    error: "Target price must be less than current price",
-  });
-}
-
-
-      if (discountAmount <= 0) {
-        return res
-          .status(400)
-          .json({ ok: false, error: "Target price must be less than current price" });
-      }
-
-      // 2) Build BXGY input
-      const triggerProductGids = triggerProductIds.map(
-        (id) => `gid://shopify/Product/${id}`
-      );
-      const upsellProductGid = variant.product.id;
-      const nowIso = new Date().toISOString();
-
-     const bxgyInput = {
-  title,
-  startsAt: nowIso,
-  endsAt: null,
-  combinesWith: {
-    orderDiscounts: true,
-    productDiscounts: true,
-    shippingDiscounts: true,
-  },
-  customerBuys: {
-    items: {
-      products: {
-        productsToAdd: triggerProductGids,
-      },
-    },
-    value: {
-      // UnsignedInt64 must be JSON string
-      quantity: "1",
-    },
-  },
-  customerGets: {
-    items: {
-      products: {
-        productsToAdd: [upsellProductGid],
-      },
-    },
-    value: {
-      // For BXGY we must use discountOnQuantity, not discountAmount
-      discountOnQuantity: {
-        // how many Y items get discounted
-        quantity: "1",
-        effect: {
-          // Use a fixed amount off that item
-          // DiscountEffectInput.amount is Decimal string
-          amount: discountAmount.toFixed(2),
-          // we **don’t** pass currencyCode here; it uses shop currency
-        },
-      },
-    },
-  },
-};
-
-      const createRes = await callShopifyAdmin({
-        shop,
-        accessToken,
-        query: CREATE_BXGY_MUTATION,
-        variables: { input: bxgyInput },
-      });
-
-      const payload = createRes.discountAutomaticBxgyCreate;
-
-      if (payload.userErrors?.length) {
-        console.error("Discount userErrors:", payload.userErrors);
-        return res.status(400).json({
+      if (error) {
+        console.error("[UPSELL_LIST_SUPABASE_ERROR]", error);
+        return res.status(500).json({
           ok: false,
-          error: payload.userErrors.map((e) => e.message).join(", "),
-          details: payload.userErrors,
+          error: error.message || "LIST_FAILED",
         });
       }
 
-      const discountNode = payload.automaticDiscountNode;
-      const discountInfo = discountNode.automaticDiscount;
-
-      // 3) Insert row in Supabase
-      const { data, error } = await supabaseAdmin
-        .from("upsell_offers")
-        .insert({
-          shop_domain: shop,
-          title,
-          trigger_type: "product",
-          trigger_product_ids: triggerProductIds,
-          upsell_product_id: parseInt(
-            upsellProductId || upsellProductGid.split("/").pop(),
-            10
-          ),
-          upsell_variant_id: parseInt(upsellVariantId, 10),
-          target_price: target,
-          base_price: basePrice,
-          discount_amount: discountAmount,
-          placement_pdp: !!placementPdp,
-          placement_cart: !!placementCart,
-          shopify_discount_id: discountNode.id,
-          shopify_discount_title: discountInfo.title,
-          shopify_discount_status: discountInfo.status,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      return res.status(200).json({ ok: true, offer: data });
-   } catch (err) {
-  console.error("List upsell offers error:", err);
-  return res.status(500).json({
-    ok: false,
-    error: err.message || "Server error",
-  });
-}
-
+      return res.status(200).json({ ok: true, offers: data || [] });
+    } catch (err) {
+      console.error("[UPSELL_LIST_FATAL]", err);
+      return res.status(500).json({
+        ok: false,
+        error: err.message || "LIST_FATAL",
+      });
+    }
   }
 
-  return res.status(405).json({ ok: false, error: "Method not allowed" });
+  // ---- POST / PUT: create or update offer ----
+  if (req.method === "POST" || req.method === "PUT") {
+    console.log("[UPSELL_ADMIN_RAW_BODY]", req.body);
+
+    try {
+      const {
+        id,
+        status = "active",
+        trigger_type = "collection",
+        trigger_product_ids,
+        trigger_collection_handles,
+
+        upsell_product_id,
+        upsell_variant_id,
+        base_price,
+        target_price,
+
+        placement_pdp = true,
+        placement_cart = false,
+
+        title,
+        box_title,
+        box_subtitle,
+        box_button_label,
+      } = req.body || {};
+
+      const upsellProductIdNum = parseNumberOrNull(upsell_product_id);
+      const upsellVariantIdNum = parseNumberOrNull(upsell_variant_id);
+      const basePriceNum = parseNumberOrNull(base_price);
+      const targetPriceNum = parseNumberOrNull(target_price);
+
+      const triggerProductIds = parseIdArray(trigger_product_ids);
+      const triggerCollectionHandles = parseHandleArray(
+        trigger_collection_handles
+      );
+
+      // 🔴 Explicit validation (no "Missing required fields" anymore)
+      if (!upsellProductIdNum || !targetPriceNum) {
+        return res.status(400).json({
+          ok: false,
+          error: "REQUIRED: upsell_product_id and target_price",
+        });
+      }
+
+      if (trigger_type === "product" && triggerProductIds.length === 0) {
+        return res.status(400).json({
+          ok: false,
+          error: "REQUIRED: at least one trigger_product_id",
+        });
+      }
+
+      if (
+        trigger_type === "collection" &&
+        triggerCollectionHandles.length === 0
+      ) {
+        return res.status(400).json({
+          ok: false,
+          error: "REQUIRED: at least one trigger_collection_handle",
+        });
+      }
+
+      const discountAmount =
+        basePriceNum && targetPriceNum
+          ? basePriceNum - targetPriceNum
+          : null;
+
+      const row = {
+        shop_domain: SHOP_DOMAIN,
+
+        status,
+        trigger_type,
+
+        trigger_product_ids:
+          trigger_type === "product" ? triggerProductIds : [],
+        trigger_collection_handles:
+          trigger_type === "collection" ? triggerCollectionHandles : [],
+
+        upsell_product_id: upsellProductIdNum,
+        upsell_variant_id: upsellVariantIdNum,
+        base_price: basePriceNum,
+        target_price: targetPriceNum,
+        discount_amount: discountAmount,
+
+        placement_pdp: !!placement_pdp,
+        placement_cart: !!(placement_cart && placement_cart !== "false"),
+
+        title: title || null,
+        box_title: box_title || null,
+        box_subtitle: box_subtitle || null,
+        box_button_label: box_button_label || null,
+      };
+
+      console.log("[UPSELL_ADMIN_COMPUTED_ROW]", row);
+
+      let result;
+      if (req.method === "POST") {
+        result = await supabaseAdmin
+          .from("upsell_offers")
+          .insert(row)
+          .select()
+          .single();
+      } else {
+        if (!id) {
+          return res.status(400).json({
+            ok: false,
+            error: "REQUIRED: id for UPDATE",
+          });
+        }
+        result = await supabaseAdmin
+          .from("upsell_offers")
+          .update(row)
+          .eq("id", id)
+          .select()
+          .single();
+      }
+
+      const { data, error } = result;
+      if (error) {
+        console.error("[UPSELL_ADMIN_SUPABASE_ERROR]", error);
+        return res.status(500).json({
+          ok: false,
+          error: error.message || "SUPABASE_SAVE_FAILED",
+        });
+      }
+
+      return res.status(200).json({ ok: true, offer: data });
+    } catch (err) {
+      console.error("[UPSELL_ADMIN_SAVE_FATAL]", err);
+      return res.status(500).json({
+        ok: false,
+        error: err.message || "SAVE_FATAL",
+      });
+    }
+  }
+
+  res.setHeader("Allow", "GET,POST,PUT");
+  return res.status(405).json({ ok: false, error: "METHOD_NOT_ALLOWED" });
 }
