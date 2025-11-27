@@ -1299,6 +1299,7 @@ async function quizRecommend(req, res) {
 }
 
 // ---- Main handler ----
+// ---- Get Upsell Offers (with Shopify product enrichment) ----
 async function getUpsellOffers(req, res, { shop }) {
   try {
     const { product_id, cart_product_ids, placement } = req.query;
@@ -1306,51 +1307,96 @@ async function getUpsellOffers(req, res, { shop }) {
     if (!product_id && !cart_product_ids) {
       return res.status(400).json({
         ok: false,
-        error: 'Missing product_id or cart_product_ids',
+        error: "Missing product_id or cart_product_ids",
       });
     }
 
+    // Base Supabase query
     let query = supabaseAdmin
-      .from('upsell_offers')
-      .select('*')
-      .eq('shop_domain', shop)
-      .eq('status', 'active');
+      .from("upsell_offers")
+      .select("*")
+      .eq("shop_domain", shop)
+      .eq("status", "active");
 
-    if (placement === 'pdp') {
-      query = query.eq('placement_pdp', true);
-    } else if (placement === 'cart') {
-      query = query.eq('placement_cart', true);
+    if (placement === "pdp") {
+      query = query.eq("placement_pdp", true);
+    } else if (placement === "cart") {
+      query = query.eq("placement_cart", true);
     }
 
     if (product_id) {
       const pid = parseInt(product_id, 10);
-
-      // Triggered by single product (PDP)
-      query = query.contains('trigger_product_ids', [pid]);
+      query = query.contains("trigger_product_ids", [pid]); // PDP trigger
     } else if (cart_product_ids) {
       const ids = cart_product_ids
-        .split(',')
+        .split(",")
         .map((x) => x.trim())
         .filter(Boolean)
         .map((x) => parseInt(x, 10));
 
-      // Any overlap with trigger_product_ids
-      query = query.overlaps('trigger_product_ids', ids);
+      query = query.overlaps("trigger_product_ids", ids); // Cart overlap
     }
 
     const { data, error } = await query;
-
     if (error) throw error;
+
+    let offers = data || [];
+
+    // 🔹 Enrich each offer with Shopify product info (image, title, url)
+    offers = await Promise.all(
+      offers.map(async (offer) => {
+        const enriched = { ...offer };
+
+        try {
+          if (offer.upsell_product_id) {
+            const productGid = `gid://shopify/Product/${offer.upsell_product_id}`;
+
+            const gql = `
+              query UpsellProduct($id: ID!) {
+                product(id: $id) {
+                  title
+                  handle
+                  onlineStoreUrl
+                  featuredImage {
+                    url
+                    altText
+                  }
+                }
+              }
+            `;
+
+            const result = await shopifyGraphQL(gql, { id: productGid });
+            const p = result?.product;
+
+            if (p) {
+              enriched.upsell_product_title = p.title;
+              enriched.upsell_product_handle = p.handle;
+              enriched.upsell_product_url =
+                p.onlineStoreUrl || `https://${shop}/products/${p.handle}`;
+              enriched.upsell_product_image_url = p.featuredImage?.url || null;
+              enriched.upsell_product_image_alt =
+                p.featuredImage?.altText || p.title || "";
+            }
+          }
+        } catch (err) {
+          console.error("UPSELL_ENRICH_ERROR", err);
+          // We still return the base offer even if enrichment fails
+        }
+
+        return enriched;
+      })
+    );
 
     return res.status(200).json({
       ok: true,
-      offers: data || [],
+      offers,
     });
   } catch (err) {
-    console.error('getUpsellOffers error:', err);
-    return res.status(500).json({ ok: false, error: 'Server error' });
+    console.error("getUpsellOffers error:", err);
+    return res.status(500).json({ ok: false, error: "Server error" });
   }
 }
+
 export default async function handler(req, res) {
   setCORS(res);
 
