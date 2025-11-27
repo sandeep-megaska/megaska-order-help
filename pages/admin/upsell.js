@@ -87,73 +87,131 @@ export default function UpsellAdminPage() {
       .filter((x) => x);
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setSaving(true);
-    setError("");
+ async function handleSubmit(e) {
+  e.preventDefault();
+  setSaving(true);
+  setError("");
 
-    try {
-      const payload = {
-        id: editingId || undefined,
-        status: form.status,
-        trigger_type: form.trigger_type,
-        trigger_product_ids:
-          form.trigger_type === "product"
-            ? parseIdArray(form.trigger_product_ids_raw)
-            : [],
-        trigger_collection_handles:
-          form.trigger_type === "collection"
-            ? parseHandleArray(form.trigger_collection_handles_raw)
-            : [],
-        upsell_product_id: parseNumberOrNull(form.upsell_product_id),
-        upsell_variant_id: parseNumberOrNull(form.upsell_variant_id),
-        base_price: parseNumberOrNull(form.base_price),
-        target_price: parseNumberOrNull(form.target_price),
-        discount_amount:
-          parseNumberOrNull(form.base_price) &&
-          parseNumberOrNull(form.target_price)
-            ? parseNumberOrNull(form.base_price) -
-              parseNumberOrNull(form.target_price)
-            : null,
-        placement_pdp: form.placement_pdp,
-        placement_cart: form.placement_cart,
-        title: form.title,
-        box_title: form.box_title,
-        box_subtitle: form.box_subtitle,
-        box_button_label: form.box_button_label,
-      };
-
-      const method = editingId ? "PUT" : "POST";
-
-      const res = await fetch("/api/admin/upsell-offers", {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          [ADMIN_TOKEN_HEADER]: adminToken,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const json = await res.json();
-      if (!json.ok) {
-        throw new Error(json.error || "Failed to save upsell");
-      }
-
-      // Reload list & reset form
-      await loadOffers();
-      setEditingId(null);
-      setForm((prev) => ({
-        ...prev,
-        trigger_product_ids_raw: "",
-        // keep most text defaults
-      }));
-    } catch (err) {
-      console.error(err);
-      setError(err.message || "Error saving upsell");
-    } finally {
-      setSaving(false);
-    }
+  // --- Basic client-side validation ---
+  // Upsell product & offer price are always required
+  if (!form.upsell_product_id || !form.target_price) {
+    setError("Upsell product ID and offer price are required");
+    setSaving(false);
+    return;
   }
+
+  // At least one trigger, depending on type
+  if (
+    form.trigger_type === "product" &&
+    !form.trigger_product_ids_raw.trim()
+  ) {
+    setError("Please enter at least one trigger product ID");
+    setSaving(false);
+    return;
+  }
+
+  if (
+    form.trigger_type === "collection" &&
+    !form.trigger_collection_handles_raw.trim()
+  ) {
+    setError("Please enter at least one collection handle");
+    setSaving(false);
+    return;
+  }
+
+  try {
+    const payload = {
+      id: editingId || undefined,
+      status: form.status,
+      trigger_type: form.trigger_type,
+
+      // product-trigger vs collection-trigger
+      trigger_product_ids:
+        form.trigger_type === "product"
+          ? parseIdArray(form.trigger_product_ids_raw)
+          : [],
+      trigger_collection_handles:
+        form.trigger_type === "collection"
+          ? parseHandleArray(form.trigger_collection_handles_raw)
+          : [],
+
+      upsell_product_id: parseNumberOrNull(form.upsell_product_id),
+      upsell_variant_id: parseNumberOrNull(form.upsell_variant_id),
+      base_price: parseNumberOrNull(form.base_price),
+      target_price: parseNumberOrNull(form.target_price),
+
+      // auto compute discount if possible
+      discount_amount:
+        parseNumberOrNull(form.base_price) &&
+        parseNumberOrNull(form.target_price)
+          ? parseNumberOrNull(form.base_price) -
+            parseNumberOrNull(form.target_price)
+          : null,
+
+      placement_pdp: form.placement_pdp,
+      placement_cart: form.placement_cart,
+
+      title: form.title,
+      box_title: form.box_title,
+      box_subtitle: form.box_subtitle,
+      box_button_label: form.box_button_label,
+    };
+
+    // Extra safeguard: ensure we’re not sending empty arrays for triggers
+    if (
+      payload.trigger_type === "product" &&
+      (!payload.trigger_product_ids || payload.trigger_product_ids.length === 0)
+    ) {
+      setError("At least one trigger product ID is required");
+      setSaving(false);
+      return;
+    }
+
+    if (
+      payload.trigger_type === "collection" &&
+      (!payload.trigger_collection_handles ||
+        payload.trigger_collection_handles.length === 0)
+    ) {
+      setError("At least one trigger collection handle is required");
+      setSaving(false);
+      return;
+    }
+
+    const method = editingId ? "PUT" : "POST";
+
+    const res = await fetch("/api/admin/upsell-offers", {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        [ADMIN_TOKEN_HEADER]: adminToken,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const json = await res.json();
+    console.log("[UPSELL_ADMIN_SAVE_RESPONSE]", json); // helpful while debugging
+
+    if (!json.ok) {
+      // show *actual* error from API, not a generic one
+      throw new Error(json.error || "Failed to save upsell");
+    }
+
+    await loadOffers();
+    setEditingId(null);
+
+    // Reset only the trigger/product bits; keep your texts as defaults
+    setForm((prev) => ({
+      ...prev,
+      trigger_product_ids_raw: "",
+      // leave collection handles + text fields as-is
+    }));
+  } catch (err) {
+    console.error("UPSELL_ADMIN_SAVE_ERROR", err);
+    setError(err.message || "Error saving upsell");
+  } finally {
+    setSaving(false);
+  }
+}
 
   function handleEdit(offer) {
     setEditingId(offer.id);
