@@ -4,11 +4,11 @@ import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 const SHOP_DOMAIN =
   process.env.SHOPIFY_SHOP_DOMAIN || "bigonbuy-fashions.myshopify.com";
 
-// Optional admin token header (you can ignore for now if not using)
+// If you don't use an admin token yet, leave this empty
 const ADMIN_TOKEN_HEADER = "x-megaska-admin-token";
 const ADMIN_TOKEN = process.env.ADMIN_DASHBOARD_TOKEN || "";
 
-// ---- Helpers ----
+// ---- Small helpers ----
 function parseIdArray(raw) {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw.map((n) => Number(n)).filter(Boolean);
@@ -35,18 +35,18 @@ function parseNumberOrNull(val) {
 }
 
 export default async function handler(req, res) {
-  // 🔐 Optional admin gating; if you haven’t set a token, this is skipped
+  // 🔐 Optional gate; if no ADMIN_TOKEN set, this is skipped
   if (ADMIN_TOKEN) {
     const token = req.headers[ADMIN_TOKEN_HEADER];
     if (!token || token !== ADMIN_TOKEN) {
       return res.status(401).json({
         ok: false,
-        error: "Unauthorized admin access",
+        error: "ADMIN_UNAUTHORIZED",
       });
     }
   }
 
-  // GET → list offers
+  // Simple health check
   if (req.method === "GET") {
     try {
       const { data, error } = await supabaseAdmin
@@ -55,20 +55,27 @@ export default async function handler(req, res) {
         .eq("shop_domain", SHOP_DOMAIN)
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error("[UPSELL_LIST_SUPABASE_ERROR]", error);
+        return res.status(500).json({
+          ok: false,
+          error: error.message || "LIST_FAILED",
+        });
+      }
 
       return res.status(200).json({ ok: true, offers: data || [] });
     } catch (err) {
-      console.error("[UPSELL_ADMIN_LIST_ERROR]", err);
+      console.error("[UPSELL_LIST_FATAL]", err);
       return res.status(500).json({
         ok: false,
-        error: err.message || "Failed to load upsell offers",
+        error: err.message || "LIST_FATAL",
       });
     }
   }
 
-  // POST/PUT → create / update
   if (req.method === "POST" || req.method === "PUT") {
+    console.log("[UPSELL_ADMIN_RAW_BODY]", req.body);
+
     try {
       const {
         id,
@@ -101,25 +108,28 @@ export default async function handler(req, res) {
         trigger_collection_handles
       );
 
-      // ✅ Minimal required validation
+      // 🔴 Validation with explicit messages (NO "Missing required fields")
       if (!upsellProductIdNum || !targetPriceNum) {
         return res.status(400).json({
           ok: false,
-          error: "Upsell product ID and offer price are required",
+          error: "REQUIRED: upsell_product_id and target_price",
         });
       }
 
       if (trigger_type === "product" && triggerProductIds.length === 0) {
         return res.status(400).json({
           ok: false,
-          error: "At least one trigger product ID is required",
+          error: "REQUIRED: at least one trigger_product_id",
         });
       }
 
-      if (trigger_type === "collection" && triggerCollectionHandles.length === 0) {
+      if (
+        trigger_type === "collection" &&
+        triggerCollectionHandles.length === 0
+      ) {
         return res.status(400).json({
           ok: false,
-          error: "At least one trigger collection handle is required",
+          error: "REQUIRED: at least one trigger_collection_handle",
         });
       }
 
@@ -154,8 +164,9 @@ export default async function handler(req, res) {
         box_button_label: box_button_label || null,
       };
 
-      let result;
+      console.log("[UPSELL_ADMIN_COMPUTED_ROW]", row);
 
+      let result;
       if (req.method === "POST") {
         result = await supabaseAdmin
           .from("upsell_offers")
@@ -166,7 +177,7 @@ export default async function handler(req, res) {
         if (!id) {
           return res.status(400).json({
             ok: false,
-            error: "Missing id for update",
+            error: "REQUIRED: id for UPDATE",
           });
         }
         result = await supabaseAdmin
@@ -178,50 +189,24 @@ export default async function handler(req, res) {
       }
 
       const { data, error } = result;
-      if (error) throw error;
-
-      return res.status(200).json({
-        ok: true,
-        offer: data,
-      });
-    } catch (err) {
-      console.error("[UPSELL_ADMIN_SAVE_ERROR]", err);
-      return res.status(500).json({
-        ok: false,
-        error: err.message || "Failed to save upsell",
-      });
-    }
-  }
-
-  // DELETE (optional)
-  if (req.method === "DELETE") {
-    try {
-      const { id } = req.body || {};
-      if (!id) {
-        return res.status(400).json({
+      if (error) {
+        console.error("[UPSELL_ADMIN_SUPABASE_ERROR]", error);
+        return res.status(500).json({
           ok: false,
-          error: "Missing id for delete",
+          error: error.message || "SUPABASE_SAVE_FAILED",
         });
       }
 
-      const { error } = await supabaseAdmin
-        .from("upsell_offers")
-        .delete()
-        .eq("id", id);
-
-      if (error) throw error;
-
-      return res.status(200).json({ ok: true });
+      return res.status(200).json({ ok: true, offer: data });
     } catch (err) {
-      console.error("[UPSELL_ADMIN_DELETE_ERROR]", err);
+      console.error("[UPSELL_ADMIN_SAVE_FATAL]", err);
       return res.status(500).json({
         ok: false,
-        error: err.message || "Failed to delete upsell",
+        error: err.message || "SAVE_FATAL",
       });
     }
   }
 
-  // Fallback
-  res.setHeader("Allow", "GET,POST,PUT,DELETE");
-  return res.status(405).json({ ok: false, error: "Method not allowed" });
+  res.setHeader("Allow", "GET,POST,PUT");
+  return res.status(405).json({ ok: false, error: "METHOD_NOT_ALLOWED" });
 }
