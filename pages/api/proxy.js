@@ -1300,7 +1300,7 @@ async function quizRecommend(req, res) {
 
 // ---- Main handler ----
 // ---- Get Upsell Offers (with Shopify product enrichment, no optional chaining) ----
-// ---- Get Upsell Offers (with Shopify product enrichment + debug) ----
+// ---- Get Upsell Offers: product + collection triggers ----
 async function getUpsellOffers(req, res, { shop }) {
   try {
     const { product_id, cart_product_ids, placement } = req.query;
@@ -1312,6 +1312,44 @@ async function getUpsellOffers(req, res, { shop }) {
       });
     }
 
+    // 1) If we have a single product_id (PDP), get its collections from Shopify
+    let productCollections = [];
+    let pidInt = null;
+
+    if (product_id) {
+      pidInt = parseInt(product_id, 10);
+
+      try {
+        const productGid = `gid://shopify/Product/${pidInt}`;
+
+        const productCollectionsQuery = `
+          query ProductCollections($id: ID!) {
+            product(id: $id) {
+              collections(first: 20) {
+                edges {
+                  node {
+                    handle
+                  }
+                }
+              }
+            }
+          }
+        `;
+
+        const pcData = await shopifyGraphQL(productCollectionsQuery, { id: productGid });
+        const edges = pcData?.product?.collections?.edges || [];
+
+        productCollections = edges
+          .map((e) => e?.node?.handle)
+          .filter((h) => !!h);
+
+        console.log("[UPSELL] productCollections:", productCollections);
+      } catch (err) {
+        console.error("UPSELL_PRODUCT_COLLECTIONS_ERROR", err);
+      }
+    }
+
+    // 2) Load all active offers for this shop + placement
     let query = supabaseAdmin
       .from("upsell_offers")
       .select("*")
@@ -1324,45 +1362,62 @@ async function getUpsellOffers(req, res, { shop }) {
       query = query.eq("placement_cart", true);
     }
 
-    if (product_id) {
-      const pid = parseInt(product_id, 10);
-      // PDP trigger: specific product
-      query = query.contains("trigger_product_ids", [pid]);
-    } else if (cart_product_ids) {
-      const ids = cart_product_ids
-        .split(",")
-        .map(function (x) { return x.trim(); })
-        .filter(function (x) { return x; })
-        .map(function (x) { return parseInt(x, 10); });
+    const { data, error } = await query;
 
-      // Cart trigger: any overlap
-      query = query.overlaps("trigger_product_ids", ids);
+    if (error) {
+      console.error("getUpsellOffers DB error:", error);
+      return res.status(500).json({ ok: false, error: "DB error" });
     }
 
-    const result = await query;
-    if (result.error) {
-      throw result.error;
+    let offers = data || [];
+
+    // 3) Filter offers based on trigger_type
+    offers = offers.filter((offer) => {
+      const t = (offer.trigger_type || "").toLowerCase();
+
+      if (t === "product") {
+        if (!pidInt) return false;
+        const list = Array.isArray(offer.trigger_product_ids)
+          ? offer.trigger_product_ids
+          : [];
+        return list.includes(pidInt);
+      }
+
+      if (t === "collection") {
+        if (!productCollections || productCollections.length === 0) return false;
+        const triggers = Array.isArray(offer.trigger_collection_handles)
+          ? offer.trigger_collection_handles
+          : [];
+        if (!triggers.length) return false;
+
+        return triggers.some((h) => productCollections.includes(h));
+      }
+
+      // Unknown trigger type – ignore
+      return false;
+    });
+
+    if (!offers.length) {
+      return res.status(200).json({ ok: true, offers: [] });
     }
 
-    var offers = result.data || [];
-
-    // 🔹 Enrich with Shopify product info + return debug info
+    // 4) Enrich with Shopify product info (for upsell product)
     offers = await Promise.all(
-      offers.map(async function (offer, idx) {
-        var enriched = Object.assign({}, offer, {
+      offers.map(async (offer, idx) => {
+        const enriched = {
+          ...offer,
           debug_source: "upsell-v2",
           enrich_attempted: false,
           enrich_success: false,
-          enrich_error: null
-        });
+          enrich_error: null,
+        };
 
         try {
           if (offer.upsell_product_id) {
             enriched.enrich_attempted = true;
 
-            var productGid = "gid://shopify/Product/" + offer.upsell_product_id;
-
-            var gql = `
+            const productGid = `gid://shopify/Product/${offer.upsell_product_id}`;
+            const gql = `
               query UpsellProduct($id: ID!) {
                 product(id: $id) {
                   title
@@ -1376,32 +1431,28 @@ async function getUpsellOffers(req, res, { shop }) {
               }
             `;
 
-            var productData = await shopifyGraphQL(gql, { id: productGid });
-            var p = productData && productData.product ? productData.product : null;
+            const productData = await shopifyGraphQL(gql, { id: productGid });
+            const p = productData?.product || null;
 
-            // For the first offer, include raw productData in response so we can see shape
             if (idx === 0) {
               enriched.enrich_productData = productData || null;
             }
 
             if (p) {
-              var featured = p.featuredImage || null;
+              const featured = p.featuredImage || null;
 
               enriched.upsell_product_title = p.title || "";
               enriched.upsell_product_handle = p.handle || "";
               enriched.upsell_product_url =
                 (p.onlineStoreUrl && p.onlineStoreUrl.length > 0)
                   ? p.onlineStoreUrl
-                  : "https://" + shop + "/products/" + (p.handle || "");
+                  : `https://${shop}/products/${p.handle || ""}`;
 
-              enriched.upsell_product_image_url = featured && featured.url
-                ? featured.url
-                : null;
+              enriched.upsell_product_image_url =
+                featured && featured.url ? featured.url : null;
 
               enriched.upsell_product_image_alt =
-                (featured && featured.altText)
-                  ? featured.altText
-                  : (p.title || "");
+                (featured && featured.altText) || p.title || "";
 
               enriched.enrich_success = true;
             } else {
@@ -1410,7 +1461,7 @@ async function getUpsellOffers(req, res, { shop }) {
           }
         } catch (err) {
           console.error("UPSELL_ENRICH_ERROR", err);
-          enriched.enrich_error = err && err.message ? err.message : String(err);
+          enriched.enrich_error = err?.message || String(err);
         }
 
         return enriched;
@@ -1419,10 +1470,10 @@ async function getUpsellOffers(req, res, { shop }) {
 
     return res.status(200).json({
       ok: true,
-      offers: offers,
+      offers,
     });
   } catch (err) {
-    console.error("getUpsellOffers error:", err);
+    console.error("getUpsellOffers fatal error:", err);
     return res.status(500).json({ ok: false, error: "Server error" });
   }
 }
