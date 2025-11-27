@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const adminTokenEnv = process.env.ADMIN_DASHBOARD_TOKEN;
+const adminTokenEnv = process.env.ADMIN_WALLET_TOKEN;
 
 if (!supabaseUrl || !supabaseServiceKey) {
   console.warn('[UPSSELL ADMIN] Missing Supabase env vars');
