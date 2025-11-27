@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-const ADMIN_TOKEN = process.env.NEXT_PUBLIC_ADMIN_DASHBOARD_TOKEN;
+const ADMIN_TOKEN = process.env.NEXT_PUBLIC_ADMIN_WALLET_TOKEN;
 const SHOP_DOMAIN = 'bigonbuy-fashions.myshopify.com';
 
 function emptyForm() {
