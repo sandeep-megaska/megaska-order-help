@@ -104,6 +104,12 @@ function derivePriceFields(body) {
     discount_amount: discountAmountNum,
   };
 }
+function toNumberOrNull(value) {
+  if (value === undefined || value === null) return null;
+  if (value === '') return null;           // important: empty string → null, not 0
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 
 // ---- Main handler ----
 
@@ -163,88 +169,109 @@ export default async function handler(req, res) {
       }
 
       // ----------------- POST: Create offer -----------------
-      case 'POST': {
-        const body = req.body || {};
+          // ----------------- POST: Create offer -----------------
+    case 'POST': {
+      const body = req.body || {};
 
-        const {
-          shop_domain,
-          title,
-          status = 'active',
-          trigger_type,
-          trigger_collection_handles,
-          trigger_product_ids,
-          upsell_product_id,
-          upsell_variant_id,
-          placement_pdp,
-          placement_cart,
-          box_title,
-          box_subtitle,
-          box_button_label,
-        } = body;
+      const {
+        shop_domain,
+        title,
+        status = 'active',
+        trigger_type,
+        trigger_collection_handles,
+        trigger_product_ids,
+        upsell_product_id,
+        upsell_variant_id,
+        placement_pdp,
+        placement_cart,
+        box_title,
+        box_subtitle,
+        box_button_label,
+      } = body;
 
-        // Validate minimum required fields
-        if (!shop_domain || !title || !trigger_type || !upsell_variant_id) {
-          return res.status(400).json({
-            ok: false,
-            error:
-              'Missing required fields: shop_domain, title, trigger_type, upsell_variant_id',
-          });
-        }
-
-        // Price fields
-        const priceFields = derivePriceFields(body);
-        const { base_price, target_price, discount_amount } = priceFields;
-
-        // Some basic logic: if trigger_type = "product", require product IDs
-        const triggerType = trigger_type;
-        const triggerCollectionHandles = normalizeArray(
-          trigger_collection_handles
-        );
-        const triggerProductIds = normalizeArray(trigger_product_ids);
-
-        if (triggerType === 'product' && triggerProductIds.length === 0) {
-          return res.status(400).json({
-            ok: false,
-            error:
-              'trigger_type=product requires at least one trigger_product_id',
-          });
-        }
-
-        const { data, error } = await supabase
-          .from('upsell_offers')
-          .insert([
-            {
-              shop_domain,
-              title,
-              status,
-              trigger_type: triggerType,
-              trigger_collection_handles: triggerCollectionHandles,
-              trigger_product_ids: triggerProductIds,
-              upsell_product_id,
-              upsell_variant_id,
-              target_price,
-              base_price,
-              discount_amount,
-              placement_pdp: !!placement_pdp,
-              placement_cart: !!placement_cart,
-              box_title,
-              box_subtitle,
-              box_button_label,
-            },
-          ])
-          .select('*')
-          .single();
-
-        if (error) {
-          console.error('[UPSELL ADMIN POST] Supabase error', error);
-          return res.status(500).json({
-            ok: false,
-            error: 'Failed to create upsell offer',
-          });
-        }
-
-        return res.status(200).json({ ok: true, offer: data });
+      // Validate minimum required fields
+      if (!shop_domain || !title || !trigger_type || !upsell_variant_id) {
+        return res.status(400).json({
+          ok: false,
+          error:
+            'Missing required fields: shop_domain, title, trigger_type, upsell_variant_id',
+        });
       }
+
+      // --- Price fields: read exactly what the form sends ---
+      const basePriceNum = toNumberOrNull(
+        body.base_price != null ? body.base_price : body.basePrice
+      );
+      const targetPriceNum = toNumberOrNull(
+        body.target_price != null ? body.target_price : body.targetPrice
+      );
+
+      // We can compute discount on the frontend from base & target.
+      // Keep discount_amount null for now to avoid weird negatives.
+      const discountAmountNum = null;
+
+      // Normalize trigger arrays
+      function normalizeArray(value) {
+        if (!value) return [];
+        if (Array.isArray(value)) return value;
+        if (typeof value === 'string') {
+          return value
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
+        }
+        return [value];
+      }
+
+      const triggerType = trigger_type;
+      const triggerCollectionHandles = normalizeArray(
+        trigger_collection_handles
+      );
+      const triggerProductIds = normalizeArray(trigger_product_ids);
+
+      if (triggerType === 'product' && triggerProductIds.length === 0) {
+        return res.status(400).json({
+          ok: false,
+          error:
+            'trigger_type=product requires at least one trigger_product_id',
+        });
+      }
+
+      const { data, error } = await supabase
+        .from('upsell_offers')
+        .insert([
+          {
+            shop_domain,
+            title,
+            status,
+            trigger_type: triggerType,
+            trigger_collection_handles: triggerCollectionHandles,
+            trigger_product_ids: triggerProductIds,
+            upsell_product_id,
+            upsell_variant_id,
+            target_price: targetPriceNum,
+            base_price: basePriceNum,
+            discount_amount: discountAmountNum,
+            placement_pdp: !!placement_pdp,
+            placement_cart: !!placement_cart,
+            box_title,
+            box_subtitle,
+            box_button_label,
+          },
+        ])
+        .select('*')
+        .single();
+
+      if (error) {
+        console.error('[UPSELL ADMIN POST] Supabase error', error);
+        return res.status(500).json({
+          ok: false,
+          error: 'Failed to create upsell offer',
+        });
+      }
+
+      return res.status(200).json({ ok: true, offer: data });
+    }
 
       // ----------------- PUT: Update offer -----------------
       case 'PUT': {
