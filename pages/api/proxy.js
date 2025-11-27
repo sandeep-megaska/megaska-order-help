@@ -1300,6 +1300,7 @@ async function quizRecommend(req, res) {
 
 // ---- Main handler ----
 // ---- Get Upsell Offers (with Shopify product enrichment, no optional chaining) ----
+// ---- Get Upsell Offers (with Shopify product enrichment + debug) ----
 async function getUpsellOffers(req, res, { shop }) {
   try {
     const { product_id, cart_product_ids, placement } = req.query;
@@ -1345,16 +1346,20 @@ async function getUpsellOffers(req, res, { shop }) {
 
     var offers = result.data || [];
 
-    // 🔹 Enrich with Shopify product info
+    // 🔹 Enrich with Shopify product info + return debug info
     offers = await Promise.all(
-      offers.map(async function (offer) {
-        // Marker so we know new code is active
+      offers.map(async function (offer, idx) {
         var enriched = Object.assign({}, offer, {
-          debug_source: "upsell-v2"
+          debug_source: "upsell-v2",
+          enrich_attempted: false,
+          enrich_success: false,
+          enrich_error: null
         });
 
         try {
           if (offer.upsell_product_id) {
+            enriched.enrich_attempted = true;
+
             var productGid = "gid://shopify/Product/" + offer.upsell_product_id;
 
             var gql = `
@@ -1374,6 +1379,11 @@ async function getUpsellOffers(req, res, { shop }) {
             var productData = await shopifyGraphQL(gql, { id: productGid });
             var p = productData && productData.product ? productData.product : null;
 
+            // For the first offer, include raw productData in response so we can see shape
+            if (idx === 0) {
+              enriched.enrich_productData = productData || null;
+            }
+
             if (p) {
               var featured = p.featuredImage || null;
 
@@ -1392,11 +1402,15 @@ async function getUpsellOffers(req, res, { shop }) {
                 (featured && featured.altText)
                   ? featured.altText
                   : (p.title || "");
+
+              enriched.enrich_success = true;
+            } else {
+              enriched.enrich_error = "productData.product is null";
             }
           }
         } catch (err) {
           console.error("UPSELL_ENRICH_ERROR", err);
-          // we still return base offer even if enrichment fails
+          enriched.enrich_error = err && err.message ? err.message : String(err);
         }
 
         return enriched;
