@@ -11,7 +11,7 @@ if (!supabaseUrl || !supabaseServiceRoleKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-// We reuse the same admin token that you already use for wallet admin.
+// We reuse the same admin token used for wallet admin.
 const adminTokenEnv = process.env.ADMIN_WALLET_TOKEN || '';
 
 function getAdminTokenFromRequest(req) {
@@ -28,7 +28,7 @@ function getAdminTokenFromRequest(req) {
 
 function toNumberOrNull(value) {
   if (value === undefined || value === null) return null;
-  if (value === '') return null; // important: empty string => null, not 0
+  if (value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -46,7 +46,7 @@ function normalizeArray(value) {
 }
 
 export default async function handler(req, res) {
-  // Admin auth – only affects this admin endpoint, not customer flows.
+  // Basic auth for admin – does NOT touch customer flows.
   const incomingToken = getAdminTokenFromRequest(req);
   if (adminTokenEnv && incomingToken !== adminTokenEnv) {
     return res.status(401).json({
@@ -57,21 +57,23 @@ export default async function handler(req, res) {
 
   try {
     switch (req.method) {
-      // -----------------------------------------------
-      // GET: list offers (optionally filtered by shop)
-      // -----------------------------------------------
+      // ----------------------------------------------------
+      // GET: list offers (optionally filter by shop_domain)
+      // ----------------------------------------------------
       case 'GET': {
         const shopDomain =
           req.query.shop_domain || req.query.shopDomain || null;
 
         let query = supabase.from('upsell_offers').select('*');
+
         if (shopDomain) {
           query = query.eq('shop_domain', shopDomain);
         }
 
-        const { data, error } = await query.order('created_at', {
-          ascending: false,
-        });
+        const { data, error } = await query.order(
+          'created_at',
+          { ascending: false }
+        );
 
         if (error) {
           console.error('[UPSELL ADMIN GET] Supabase error', error);
@@ -84,9 +86,9 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, offers: data || [] });
       }
 
-      // -----------------------------------------------
+      // ----------------------------------------------------
       // POST: create offer
-      // -----------------------------------------------
+      // ----------------------------------------------------
       case 'POST': {
         const body = req.body || {};
 
@@ -113,7 +115,6 @@ export default async function handler(req, res) {
           });
         }
 
-        // Prices from dashboard
         const basePriceNum = toNumberOrNull(
           body.base_price != null ? body.base_price : body.basePrice
         );
@@ -121,7 +122,7 @@ export default async function handler(req, res) {
           body.target_price != null ? body.target_price : body.targetPrice
         );
 
-        // Compute discount: base - target if both present and base >= target
+        // Compute discount_amount on backend: base - target (if both present)
         let discountAmountNum = null;
         if (basePriceNum != null && targetPriceNum != null) {
           const diff = basePriceNum - targetPriceNum;
@@ -178,9 +179,9 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, offer: data });
       }
 
-      // -----------------------------------------------
-      // PUT: update existing offer by id
-      // -----------------------------------------------
+      // ----------------------------------------------------
+      // PUT: update offer by id
+      // ----------------------------------------------------
       case 'PUT': {
         const body = req.body || {};
         const { id } = body;
@@ -270,9 +271,9 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, offer: data });
       }
 
-      // -----------------------------------------------
+      // ----------------------------------------------------
       // DELETE: delete offer by id
-      // -----------------------------------------------
+      // ----------------------------------------------------
       case 'DELETE': {
         const id = req.query.id || req.body?.id;
         if (!id) {
