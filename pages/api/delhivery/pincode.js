@@ -1,6 +1,15 @@
 // pages/api/delhivery/pincode.js
 
 export default async function handler(req, res) {
+  // --- CORS headers ---
+  res.setHeader("Access-Control-Allow-Origin", "*"); // or "https://megaska.com"
+  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   if (req.method !== "GET") {
     res.setHeader("Allow", ["GET"]);
     return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -32,11 +41,22 @@ export default async function handler(req, res) {
       method: "GET",
       headers: {
         Accept: "application/json",
-        Authorization: `Token ${token}`, // usually accepted
+        Authorization: `Token ${token}`,
       },
     });
 
-    const raw = await dlRes.json();
+    const text = await dlRes.text();
+
+    let raw;
+    try {
+      raw = JSON.parse(text);
+    } catch (e) {
+      console.error("[DELHIVERY PINCODE NON-JSON]", text);
+      return res.status(500).json({
+        ok: false,
+        error: "Unexpected response from Delhivery",
+      });
+    }
 
     const codes = raw.delivery_codes || [];
     const postal = codes[0]?.postal_code || {};
@@ -48,7 +68,7 @@ export default async function handler(req, res) {
     const city = postal.city || null;
     const district = postal.district || city || null;
     const stateCode = postal.state_code || null;
-    const inc = postal.inc || null; // often "City (State)"
+    const inc = postal.inc || null;
 
     return res.status(200).json({
       ok: true,
@@ -60,7 +80,7 @@ export default async function handler(req, res) {
       district,
       stateCode,
       inc,
-      raw, // keep for now; you can remove later in production
+      // raw, // you can comment this out later if not needed
     });
   } catch (error) {
     console.error("[DELHIVERY PINCODE ERROR]", error);
