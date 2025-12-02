@@ -99,7 +99,7 @@ export default async function handler(req, res) {
       if (tatBaseUrl && originPin) {
         // You said: origin_pin, destination_pin, mot (S/E), pdt (B2B/B2C/empty)
         // We'll use Surface (S) and B2C.
-        const mot = "S";
+        const mot = "E";
         const pdt = "B2C";
 
         const tatUrl =
