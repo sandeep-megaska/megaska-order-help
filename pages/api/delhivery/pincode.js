@@ -2,7 +2,7 @@
 
 export default async function handler(req, res) {
   // --- CORS headers ---
-  res.setHeader("Access-Control-Allow-Origin", "*"); // you can restrict to https://megaska.com if you want
+  res.setHeader("Access-Control-Allow-Origin", "*"); // you can tighten to https://megaska.com later
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
@@ -25,9 +25,11 @@ export default async function handler(req, res) {
     const token = process.env.DELHIVERY_API_TOKEN;
     const baseUrl =
       process.env.DELHIVERY_PINCODE_URL ||
-      "https://track.delhivery.com/c/api/pin-codes/json/";
+      "https://track.delhivery.com/c/api/pin-codes/json/?filter_codes=pin_code";
     const originPin = process.env.DELHIVERY_ORIGIN_PIN;
-    const tatUrl = process.env.DELHIVERY_TAT_URL; // Expected TAT API URL from your Delhivery docs
+    const tatBaseUrl =
+      process.env.DELHIVERY_TAT_URL ||
+      "https://track.delhivery.com/api/dc/expected_tat";
 
     if (!token) {
       return res
@@ -72,7 +74,7 @@ export default async function handler(req, res) {
     const stateCode = postal.state_code || null;
     const inc = postal.inc || null;
 
-    // If not serviceable, no point calling TAT
+    // If not serviceable, no need to call TAT API
     if (!isServiceable) {
       return res.status(200).json({
         ok: true,
@@ -84,22 +86,30 @@ export default async function handler(req, res) {
         district,
         stateCode,
         inc,
+        tatDays: null,
+        estimatedDate: null,
       });
     }
 
-    // 2) EXPECTED TAT API (origin -> destination)
+    // 2) EXPECTED TAT API (origin_pin + destination_pin + mot + pdt)
     let tatDays = null;
     let estimatedDate = null;
 
     try {
-      if (tatUrl && originPin) {
-        // NOTE: Adjust method and payload based on your Delhivery docs.
-        // This example assumes a GET with query params origin & destination.
-        const tatQuery = `${tatUrl}?origin_pincode=${encodeURIComponent(
-          originPin
-        )}&destination_pincode=${encodeURIComponent(pin)}`;
+      if (tatBaseUrl && originPin) {
+        // You said: origin_pin, destination_pin, mot (S/E), pdt (B2B/B2C/empty)
+        // We'll use Surface (S) and B2C.
+        const mot = "S";
+        const pdt = "B2C";
 
-        const tatRes = await fetch(tatQuery, {
+        const tatUrl =
+          tatBaseUrl +
+          `?origin_pin=${encodeURIComponent(originPin)}` +
+          `&destination_pin=${encodeURIComponent(pin)}` +
+          `&mot=${encodeURIComponent(mot)}` +
+          `&pdt=${encodeURIComponent(pdt)}`;
+
+        const tatRes = await fetch(tatUrl, {
           method: "GET",
           headers: {
             Accept: "application/json",
@@ -116,21 +126,28 @@ export default async function handler(req, res) {
           tatJson = null;
         }
 
+        console.log("[DELHIVERY TAT JSON]", tatJson);
+
         if (tatJson) {
-          // 🔴 IMPORTANT:
-          // Map these to the actual fields from your Expected TAT API response.
-          // Common patterns: tatJson.tat, tatJson.days, tatJson.data.tat, etc.
+          // 🔴 IMPORTANT: adjust these fields to what your TAT API actually returns.
+          // Common patterns – you can tweak after checking logs:
           tatDays =
             tatJson.tat ||
             tatJson.days ||
             tatJson.expected_tat ||
+            tatJson.tat_days ||
+            (tatJson.data && (tatJson.data.tat || tatJson.data.expected_tat)) ||
             null;
 
-          // If API already gives a date, you can map it here instead.
-          // Example:
-          // estimatedDate = tatJson.expected_delivery_date || null;
+          estimatedDate =
+            tatJson.expected_delivery_date ||
+            tatJson.delivery_date ||
+            (tatJson.data &&
+              (tatJson.data.expected_delivery_date ||
+                tatJson.data.delivery_date)) ||
+            null;
 
-          // If you only get days, compute a simple expected date from today:
+          // If API only gives days and no date, derive date from today
           if (tatDays && !estimatedDate) {
             const d = new Date();
             d.setDate(d.getDate() + Number(tatDays));
@@ -138,9 +155,9 @@ export default async function handler(req, res) {
           }
         }
       }
-    } catch (tatError) {
-      console.error("[DELHIVERY TAT ERROR]", tatError);
-      // we don't fail the whole API if TAT fails; just skip EDD
+    } catch (tatErr) {
+      console.error("[DELHIVERY TAT ERROR]", tatErr);
+      // Don't break the whole API just because TAT failed
     }
 
     return res.status(200).json({
@@ -153,8 +170,8 @@ export default async function handler(req, res) {
       district,
       stateCode,
       inc,
-      tatDays: tatDays ? Number(tatDays) : null,
-      estimatedDate, // may be null if TAT call fails
+      tatDays: tatDays != null ? Number(tatDays) : null,
+      estimatedDate,
     });
   } catch (error) {
     console.error("[DELHIVERY PINCODE ERROR]", error);
