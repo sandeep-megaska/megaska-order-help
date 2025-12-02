@@ -25,7 +25,7 @@ export default async function handler(req, res) {
     const token = process.env.DELHIVERY_API_TOKEN;
     const baseUrl =
       process.env.DELHIVERY_PINCODE_URL ||
-      "https://track.delhivery.com/c/api/pin-codes/json/";
+      "https://track.delhivery.com/c/api/pin-codes/json/?filter_codes=pin_code";
 
     if (!token) {
       return res
