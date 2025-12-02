@@ -2,7 +2,7 @@
 
 export default async function handler(req, res) {
   // --- CORS headers ---
-  res.setHeader("Access-Control-Allow-Origin", "*"); // or "https://megaska.com"
+  res.setHeader("Access-Control-Allow-Origin", "*"); // you can restrict to https://megaska.com if you want
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
@@ -25,7 +25,9 @@ export default async function handler(req, res) {
     const token = process.env.DELHIVERY_API_TOKEN;
     const baseUrl =
       process.env.DELHIVERY_PINCODE_URL ||
-      "https://track.delhivery.com/c/api/pin-codes/json/?filter_codes=pin_code";
+      "https://track.delhivery.com/c/api/pin-codes/json/";
+    const originPin = process.env.DELHIVERY_ORIGIN_PIN;
+    const tatUrl = process.env.DELHIVERY_TAT_URL; // Expected TAT API URL from your Delhivery docs
 
     if (!token) {
       return res
@@ -33,11 +35,12 @@ export default async function handler(req, res) {
         .json({ ok: false, error: "Delhivery token not configured" });
     }
 
-    const url = `${baseUrl}?token=${encodeURIComponent(
+    // 1) PINCODE SERVICEABILITY
+    const svcUrl = `${baseUrl}?token=${encodeURIComponent(
       token
     )}&filter_codes=${encodeURIComponent(pin)}`;
 
-    const dlRes = await fetch(url, {
+    const dlRes = await fetch(svcUrl, {
       method: "GET",
       headers: {
         Accept: "application/json",
@@ -45,13 +48,12 @@ export default async function handler(req, res) {
       },
     });
 
-    const text = await dlRes.text();
-
+    const svcText = await dlRes.text();
     let raw;
     try {
-      raw = JSON.parse(text);
+      raw = JSON.parse(svcText);
     } catch (e) {
-      console.error("[DELHIVERY PINCODE NON-JSON]", text);
+      console.error("[DELHIVERY PINCODE NON-JSON]", svcText);
       return res.status(500).json({
         ok: false,
         error: "Unexpected response from Delhivery",
@@ -70,6 +72,77 @@ export default async function handler(req, res) {
     const stateCode = postal.state_code || null;
     const inc = postal.inc || null;
 
+    // If not serviceable, no point calling TAT
+    if (!isServiceable) {
+      return res.status(200).json({
+        ok: true,
+        pin,
+        isServiceable: false,
+        isCod,
+        isPrepaid,
+        city,
+        district,
+        stateCode,
+        inc,
+      });
+    }
+
+    // 2) EXPECTED TAT API (origin -> destination)
+    let tatDays = null;
+    let estimatedDate = null;
+
+    try {
+      if (tatUrl && originPin) {
+        // NOTE: Adjust method and payload based on your Delhivery docs.
+        // This example assumes a GET with query params origin & destination.
+        const tatQuery = `${tatUrl}?origin_pincode=${encodeURIComponent(
+          originPin
+        )}&destination_pincode=${encodeURIComponent(pin)}`;
+
+        const tatRes = await fetch(tatQuery, {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Token ${token}`,
+          },
+        });
+
+        const tatText = await tatRes.text();
+        let tatJson;
+        try {
+          tatJson = JSON.parse(tatText);
+        } catch (e) {
+          console.error("[DELHIVERY TAT NON-JSON]", tatText);
+          tatJson = null;
+        }
+
+        if (tatJson) {
+          // 🔴 IMPORTANT:
+          // Map these to the actual fields from your Expected TAT API response.
+          // Common patterns: tatJson.tat, tatJson.days, tatJson.data.tat, etc.
+          tatDays =
+            tatJson.tat ||
+            tatJson.days ||
+            tatJson.expected_tat ||
+            null;
+
+          // If API already gives a date, you can map it here instead.
+          // Example:
+          // estimatedDate = tatJson.expected_delivery_date || null;
+
+          // If you only get days, compute a simple expected date from today:
+          if (tatDays && !estimatedDate) {
+            const d = new Date();
+            d.setDate(d.getDate() + Number(tatDays));
+            estimatedDate = d.toISOString().slice(0, 10); // YYYY-MM-DD
+          }
+        }
+      }
+    } catch (tatError) {
+      console.error("[DELHIVERY TAT ERROR]", tatError);
+      // we don't fail the whole API if TAT fails; just skip EDD
+    }
+
     return res.status(200).json({
       ok: true,
       pin,
@@ -80,7 +153,8 @@ export default async function handler(req, res) {
       district,
       stateCode,
       inc,
-      // raw, // you can comment this out later if not needed
+      tatDays: tatDays ? Number(tatDays) : null,
+      estimatedDate, // may be null if TAT call fails
     });
   } catch (error) {
     console.error("[DELHIVERY PINCODE ERROR]", error);
