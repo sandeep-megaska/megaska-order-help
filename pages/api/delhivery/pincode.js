@@ -1,7 +1,6 @@
 // pages/api/delhivery/pincode.js
 
 export default async function handler(req, res) {
-  // Allow only GET
   if (req.method !== "GET") {
     res.setHeader("Allow", ["GET"]);
     return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -33,25 +32,23 @@ export default async function handler(req, res) {
       method: "GET",
       headers: {
         Accept: "application/json",
-        // Some setups use Header token instead of query param token – you can keep both
-        "Authorization": `Token ${token}`,
+        Authorization: `Token ${token}`, // usually accepted
       },
     });
 
-    const data = await dlRes.json();
+    const raw = await dlRes.json();
 
-    // Normalise result for frontend
-    // You may need to adjust according to exact Delhivery response format
-    const codes = data.delivery_codes || data["delivery_codes"] || [];
-    const entry = codes[0] || {};
-    const postalCodeInfo = entry.postal_code || entry["postal_code"] || {};
+    const codes = raw.delivery_codes || [];
+    const postal = codes[0]?.postal_code || {};
 
-    // Example structure – adjust to match actual response from Delhivery
-    const isServiceable = !!codes.length;
-    const isCod = !!postalCodeInfo.cod;
-    const isPrepaid = !!postalCodeInfo.prepaid;
-    const state = postalCodeInfo.state || null;
-    const district = postalCodeInfo.district || null;
+    const isServiceable = codes.length > 0;
+    const isCod = postal.cod === "Y" || postal.cash === "Y";
+    const isPrepaid = postal.pre_paid === "Y";
+
+    const city = postal.city || null;
+    const district = postal.district || city || null;
+    const stateCode = postal.state_code || null;
+    const inc = postal.inc || null; // often "City (State)"
 
     return res.status(200).json({
       ok: true,
@@ -59,9 +56,11 @@ export default async function handler(req, res) {
       isServiceable,
       isCod,
       isPrepaid,
-      state,
+      city,
       district,
-      raw: data, // keep for debugging for now; remove later if you want
+      stateCode,
+      inc,
+      raw, // keep for now; you can remove later in production
     });
   } catch (error) {
     console.error("[DELHIVERY PINCODE ERROR]", error);
