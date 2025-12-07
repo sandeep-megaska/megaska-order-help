@@ -13,23 +13,37 @@ export default function Login() {
     e.preventDefault();
     setErrorMsg("");
     setSuccessMsg("");
-    setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    setLoading(false);
-
-    if (error) {
-      console.error("Login error:", error);
-      setErrorMsg(error.message || "Login failed");
+    // Safety: if supabase client is not configured, don't get stuck
+    if (!supabase) {
+      setErrorMsg(
+        "Auth is not configured on the server. Please set Supabase env variables."
+      );
       return;
     }
 
-    setSuccessMsg("Login successful. Redirecting...");
-    window.location.href = "/"; // later we can change to /erp
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        console.error("Login error:", error);
+        setErrorMsg(error.message || "Login failed");
+        return;
+      }
+
+      setSuccessMsg("Login successful. Redirecting...");
+      window.location.href = "/";
+    } catch (err) {
+      console.error("Unexpected login error:", err);
+      setErrorMsg("Unexpected error during login. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -55,13 +69,11 @@ export default function Login() {
           boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
         }}
       >
-        {/* Bigonbuy logo (same file as on homepage) */}
         <img
           src="/LOGO BigOnBuY.png"
           alt="Bigonbuy"
           style={{ height: "36px", width: "auto", marginBottom: "12px" }}
         />
-
         <h1 style={{ marginTop: 0, fontSize: "20px" }}>Login to Console</h1>
         <p style={{ fontSize: "14px", color: "#666", marginBottom: "16px" }}>
           Access is restricted to Bigonbuy / Megaska employees.
