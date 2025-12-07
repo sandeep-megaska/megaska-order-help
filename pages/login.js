@@ -10,28 +10,47 @@ export default function Login() {
   const [successMsg, setSuccessMsg] = useState("");
 
   async function handleSubmit(e) {
-    e.preventDefault();
-    setErrorMsg("");
-    setSuccessMsg("");
-    setLoading(true);
+  e.preventDefault();
+  setErrorMsg("");
+  setSuccessMsg("");
+  setLoading(true);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
 
+  if (error) {
+    console.error("Login error:", error);
     setLoading(false);
-
-    if (error) {
-      console.error("Login error:", error);
-      setErrorMsg(error.message || "Login failed");
-      return;
-    }
-
-    // Logged in successfully → redirect to home/console
-    setSuccessMsg("Login successful. Redirecting...");
-    window.location.href = "/"; // or "/erp" later
+    setErrorMsg(error.message || "Login failed");
+    return;
   }
+
+  // Get the logged-in user
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Tell backend to ensure profile & role
+  if (user) {
+    try {
+      await fetch("/api/profile/ensure", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user }),
+      });
+    } catch (err) {
+      console.error("Profile ensure error:", err);
+      // Not fatal for login
+    }
+  }
+
+  setLoading(false);
+  setSuccessMsg("Login successful. Redirecting...");
+  window.location.href = "/"; // later can change to "/erp"
+}
+
 
   return (
     <main
