@@ -27,7 +27,7 @@ export default function Home() {
         {/* Header: Bigonbuy logo only */}
         <header style={{ marginBottom: "24px" }}>
           <img
-            src="/bigonbuy-logo.png"
+            src="/LOGO BigOnBuY.png"
             alt="Bigonbuy"
             style={{ height: "48px", width: "auto" }}
           />
