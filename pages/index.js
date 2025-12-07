@@ -85,7 +85,7 @@ export default function Home() {
               }}
             >
               <img
-                src="/megaska-logo.png"
+                src="/logo megaska.png"
                 alt="Megaska"
                 style={{ height: "28px", width: "auto" }}
               />
