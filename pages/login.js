@@ -14,10 +14,9 @@ export default function Login() {
     setErrorMsg("");
     setSuccessMsg("");
 
-    // Safety: if supabase client is not configured, don't get stuck
     if (!supabase) {
       setErrorMsg(
-        "Auth is not configured on the server. Please set Supabase env variables."
+        "Auth is not configured on the server. Please check SUPABASE_URL / SUPABASE_ANON_KEY."
       );
       return;
     }
@@ -74,6 +73,7 @@ export default function Login() {
           alt="Bigonbuy"
           style={{ height: "36px", width: "auto", marginBottom: "12px" }}
         />
+
         <h1 style={{ marginTop: 0, fontSize: "20px" }}>Login to Console</h1>
         <p style={{ fontSize: "14px", color: "#666", marginBottom: "16px" }}>
           Access is restricted to Bigonbuy / Megaska employees.
@@ -101,7 +101,7 @@ export default function Login() {
                 width: "100%",
                 padding: "8px 10px",
                 borderRadius: "8px",
-                border: "1px solid #ccc",
+                border: "1px solid "#ccc",
                 fontSize: "14px",
               }}
             />
