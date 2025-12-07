@@ -60,11 +60,11 @@ export default function Home() {
               }}
             >
               <img
-                src="/LOGO BigOnBuY.png"
+                src="/logo megaska.png"
                 alt="Bigonbuy"
                 style={{ height: "28px", width: "auto" }}
               />
-              <span>Bigonbuy</span>
+              <span>MEGASKA</span>
             </a>
 
             {/* Megaska brand */}
