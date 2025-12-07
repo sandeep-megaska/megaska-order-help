@@ -1,29 +1,4 @@
- {/* Bigonbuy brand */}
-           
-            {/* Megaska brand */}
-            <a
-              href="https://www.megaska.com"
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "10px 14px",
-                borderRadius: "999px",
-                border: "1px solid #ddd",
-                textDecoration: "none",
-                color: "#111",
-                fontSize: "14px",
-              }}
-            >
-              <img
-                src="/logo megaska.png"
-                alt="Megaska"
-                style={{ height: "28px", width: "auto" }}
-              />
-              <span>Megaska</span>
-            </a>// pages/index.js
+// pages/index.js
 
 export default function Home() {
   return (
@@ -58,7 +33,7 @@ export default function Home() {
           />
         </header>
 
-        {/* Our Brands section with logos */}
+        {/* Our Brands section with only Megaska */}
         <section style={{ marginBottom: "24px" }}>
           <h2 style={{ fontSize: "16px", marginBottom: "12px" }}>Our Brands</h2>
           <div
@@ -69,7 +44,29 @@ export default function Home() {
               flexWrap: "wrap",
             }}
           >
-           
+            <a
+              href="https://www.megaska.com"
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "10px 14px",
+                borderRadius: "999px",
+                border: "1px solid "#ddd",
+                textDecoration: "none",
+                color: "#111",
+                fontSize: "14px",
+              }}
+            >
+              <img
+                src="/logo megaska.png"
+                alt="Megaska"
+                style={{ height: "28px", width: "auto" }}
+              />
+              <span>Megaska</span>
+            </a>
           </div>
         </section>
 
