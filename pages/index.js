@@ -44,32 +44,7 @@ export default function Home() {
               flexWrap: "wrap",
             }}
           >
-            {/* Bigonbuy brand */}
            
-            {/* Megaska brand */}
-            <a
-              href="https://www.megaska.com"
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "10px 14px",
-                borderRadius: "999px",
-                border: "1px solid #ddd",
-                textDecoration: "none",
-                color: "#111",
-                fontSize: "14px",
-              }}
-            >
-              <img
-                src="/logo megaska.png"
-                alt="Megaska"
-                style={{ height: "28px", width: "auto" }}
-              />
-              <span>Megaska</span>
-            </a>
           </div>
         </section>
 
