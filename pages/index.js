@@ -60,7 +60,7 @@ export default function Home() {
               }}
             >
               <img
-                src="/bigonbuy-logo.png"
+                src="/LOGO BigOnBuY.png"
                 alt="Bigonbuy"
                 style={{ height: "28px", width: "auto" }}
               />
