@@ -8,7 +8,8 @@ export default function Home() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        fontFamily:
+          "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         backgroundColor: "#f5f5f5",
         padding: "24px",
       }}
@@ -23,38 +24,87 @@ export default function Home() {
           boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
         }}
       >
+        {/* Header: Bigonbuy logo only */}
         <header style={{ marginBottom: "24px" }}>
-          <h1 style={{ margin: 0, fontSize: "24px" }}>Bigonbuy Business Console</h1>
-          <p style={{ margin: "8px 0 0", color: "#555" }}>
-            Internal tools for <strong>Megaska</strong> &amp; Bigonbuy Trading Pvt Ltd.
-          </p>
+          <img
+            src="/bigonbuy-logo.png"
+            alt="Bigonbuy"
+            style={{ height: "48px", width: "auto" }}
+          />
         </header>
 
-        {/* Public brand link */}
+        {/* Our Brands section with logos */}
         <section style={{ marginBottom: "24px" }}>
-          <h2 style={{ fontSize: "16px", marginBottom: "8px" }}>Customer Website</h2>
-          <a
-            href="https://www.megaska.com"
-            target="_blank"
-            rel="noreferrer"
+          <h2 style={{ fontSize: "16px", marginBottom: "12px" }}>Our Brands</h2>
+          <div
             style={{
-              display: "inline-block",
-              padding: "10px 16px",
-              borderRadius: "999px",
-              border: "1px solid #ddd",
-              textDecoration: "none",
-              color: "#111",
-              fontSize: "14px",
+              display: "flex",
+              gap: "16px",
+              alignItems: "center",
+              flexWrap: "wrap",
             }}
           >
-            🌐 Visit megaska.com
-          </a>
+            {/* Bigonbuy brand */}
+            <a
+              href="https://bigonbuy.com"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "10px 14px",
+                borderRadius: "999px",
+                border: "1px solid #ddd",
+                textDecoration: "none",
+                color: "#111",
+                fontSize: "14px",
+              }}
+            >
+              <img
+                src="/bigonbuy-logo.png"
+                alt="Bigonbuy"
+                style={{ height: "28px", width: "auto" }}
+              />
+              <span>Bigonbuy</span>
+            </a>
+
+            {/* Megaska brand */}
+            <a
+              href="https://www.megaska.com"
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "10px 14px",
+                borderRadius: "999px",
+                border: "1px solid #ddd",
+                textDecoration: "none",
+                color: "#111",
+                fontSize: "14px",
+              }}
+            >
+              <img
+                src="/megaska-logo.png"
+                alt="Megaska"
+                style={{ height: "28px", width: "auto" }}
+              />
+              <span>Megaska</span>
+            </a>
+          </div>
         </section>
 
         {/* Internal tools */}
         <section style={{ marginBottom: "24px" }}>
           <h2 style={{ fontSize: "16px", marginBottom: "8px" }}>Internal Apps</h2>
-          <ul style={{ paddingLeft: "18px", margin: 0, color: "#333", fontSize: "14px" }}>
+          <ul
+            style={{
+              paddingLeft: "18px",
+              margin: 0,
+              color: "#333",
+              fontSize: "14px",
+            }}
+          >
             <li>
               <a href="/order-help">🛍 Megaska Order Help App</a>
             </li>
