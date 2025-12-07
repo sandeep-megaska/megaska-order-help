@@ -10,47 +10,27 @@ export default function Login() {
   const [successMsg, setSuccessMsg] = useState("");
 
   async function handleSubmit(e) {
-  e.preventDefault();
-  setErrorMsg("");
-  setSuccessMsg("");
-  setLoading(true);
+    e.preventDefault();
+    setErrorMsg("");
+    setSuccessMsg("");
+    setLoading(true);
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-  if (error) {
-    console.error("Login error:", error);
     setLoading(false);
-    setErrorMsg(error.message || "Login failed");
-    return;
-  }
 
-  // Get the logged-in user
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // Tell backend to ensure profile & role
-  if (user) {
-    try {
-      await fetch("/api/profile/ensure", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user }),
-      });
-    } catch (err) {
-      console.error("Profile ensure error:", err);
-      // Not fatal for login
+    if (error) {
+      console.error("Login error:", error);
+      setErrorMsg(error.message || "Login failed");
+      return;
     }
+
+    setSuccessMsg("Login successful. Redirecting...");
+    window.location.href = "/"; // later we can change to /erp
   }
-
-  setLoading(false);
-  setSuccessMsg("Login successful. Redirecting...");
-  window.location.href = "/"; // later can change to "/erp"
-}
-
 
   return (
     <main
@@ -75,11 +55,13 @@ export default function Login() {
           boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
         }}
       >
+        {/* Bigonbuy logo (same file as on homepage) */}
         <img
           src="/LOGO BigOnBuY.png"
           alt="Bigonbuy"
           style={{ height: "36px", width: "auto", marginBottom: "12px" }}
         />
+
         <h1 style={{ marginTop: 0, fontSize: "20px" }}>Login to Console</h1>
         <p style={{ fontSize: "14px", color: "#666", marginBottom: "16px" }}>
           Access is restricted to Bigonbuy / Megaska employees.
