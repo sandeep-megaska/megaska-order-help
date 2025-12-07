@@ -54,19 +54,14 @@ export default function Home() {
                 gap: "8px",
                 padding: "10px 14px",
                 borderRadius: "999px",
-                border: "1px solid "#ddd",
+                border: "1px solid #ddd",
                 textDecoration: "none",
                 color: "#111",
                 fontSize: "14px",
               }}
             >
               <img
-                src="/<img
-  src="logo megaska.png"
-  alt="Megaska"
-  style={{ height: "28px", width: "auto" }}
-/>
-"
+                src="/logo megaska.png"
                 alt="Megaska"
                 style={{ height: "28px", width: "auto" }}
               />
@@ -75,7 +70,25 @@ export default function Home() {
           </div>
         </section>
 
-       
+        {/* Internal tools */}
+        <section style={{ marginBottom: "24px" }}>
+          <h2 style={{ fontSize: "16px", marginBottom: "8px" }}>Internal Apps</h2>
+          <ul
+            style={{
+              paddingLeft: "18px",
+              margin: 0,
+              color: "#333",
+              fontSize: "14px",
+            }}
+          >
+            <li>
+              <a href="/order-help">🛍 Megaska Order Help App</a>
+            </li>
+            <li>👥 HR (coming soon)</li>
+            <li>📊 Finance (coming soon)</li>
+            <li>📦 ERP Dashboard (coming soon)</li>
+          </ul>
+        </section>
 
         {/* Auth section */}
         <section
