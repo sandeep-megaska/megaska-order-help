@@ -45,28 +45,7 @@ export default function Home() {
             }}
           >
             {/* Bigonbuy brand */}
-            <a
-              href="https://bigonbuy.com"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "10px 14px",
-                borderRadius: "999px",
-                border: "1px solid #ddd",
-                textDecoration: "none",
-                color: "#111",
-                fontSize: "14px",
-              }}
-            >
-              <img
-                src="/logo megaska.png"
-                alt="Bigonbuy"
-                style={{ height: "28px", width: "auto" }}
-              />
-              <span>MEGASKA</span>
-            </a>
-
+           
             {/* Megaska brand */}
             <a
               href="https://www.megaska.com"
