@@ -135,7 +135,7 @@ export default function Home() {
               }}
             >
               <img
-                src="/megaska-logo.png" // adjust if your file name differs
+                src="/logo megaska.png" // adjust if your file name differs
                 alt="Megaska"
                 style={{ height: "28px", width: "auto" }}
               />
