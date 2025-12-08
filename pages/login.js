@@ -16,7 +16,7 @@ export default function Login() {
 
     if (!supabase) {
       setErrorMsg(
-        "Auth is not configured on the server. Please check SUPABASE_URL / SUPABASE_ANON_KEY."
+        "Auth is not configured on the server. Please check Supabase env variables."
       );
       return;
     }
@@ -101,7 +101,7 @@ export default function Login() {
                 width: "100%",
                 padding: "8px 10px",
                 borderRadius: "8px",
-                border: "1px solid "#ccc",
+                border: "1px solid #ccc",
                 fontSize: "14px",
               }}
             />
@@ -139,6 +139,7 @@ export default function Login() {
               {errorMsg}
             </p>
           )}
+
           {successMsg && (
             <p
               style={{ color: "green", fontSize: "13px", marginBottom: "8px" }}
