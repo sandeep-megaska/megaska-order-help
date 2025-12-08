@@ -1,6 +1,51 @@
 // pages/index.js
+import { useEffect, useState } from "react";
+import supabase from "../lib/supabaseClient";
 
 export default function Home() {
+  const [user, setUser] = useState(null);
+  const [checkingUser, setCheckingUser] = useState(true);
+
+  // Load current user on mount and subscribe to auth changes
+  useEffect(() => {
+    async function loadUser() {
+      if (!supabase) {
+        setCheckingUser(false);
+        return;
+      }
+
+      const { data, error } = await supabase.auth.getUser();
+      if (!error) {
+        setUser(data.user || null);
+      }
+      setCheckingUser(false);
+    }
+
+    loadUser();
+
+    if (!supabase) return;
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      subscription?.unsubscribe?.();
+    };
+  }, []);
+
+  async function handleLogout() {
+    if (!supabase) return;
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+  }
+
   return (
     <main
       style={{
@@ -25,12 +70,41 @@ export default function Home() {
         }}
       >
         {/* Header: Bigonbuy logo only */}
-        <header style={{ marginBottom: "24px" }}>
+        <header
+          style={{
+            marginBottom: "16px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "12px",
+          }}
+        >
           <img
             src="/LOGO BigOnBuY.png"
             alt="Bigonbuy"
             style={{ height: "48px", width: "auto" }}
           />
+
+          {/* Welcome pill when logged in */}
+          {!checkingUser && user && (
+            <div
+              style={{
+                fontSize: "12px",
+                padding: "6px 10px",
+                borderRadius: "999px",
+                backgroundColor: "#f5f5f5",
+                border: "1px solid #eee",
+                color: "#444",
+                maxWidth: "260px",
+                textAlign: "right",
+              }}
+            >
+              Welcome,&nbsp;
+              <strong style={{ fontWeight: 600 }}>
+                {user.email || "Employee"}
+              </strong>
+            </div>
+          )}
         </header>
 
         {/* Our Brands section with only Megaska */}
@@ -61,7 +135,7 @@ export default function Home() {
               }}
             >
               <img
-                src="/logo megaska.png"
+                src="/megaska-logo.png" // adjust if your file name differs
                 alt="Megaska"
                 style={{ height: "28px", width: "auto" }}
               />
@@ -90,7 +164,7 @@ export default function Home() {
           </ul>
         </section>
 
-        {/* Auth section */}
+        {/* Auth / footer section */}
         <section
           style={{
             display: "flex",
@@ -98,24 +172,53 @@ export default function Home() {
             alignItems: "center",
             borderTop: "1px solid #eee",
             paddingTop: "16px",
+            gap: "12px",
           }}
         >
-          <span style={{ fontSize: "13px", color: "#777" }}>
-            Authorized employees only.
-          </span>
-          <a
-            href="/login"
-            style={{
-              padding: "10px 18px",
-              borderRadius: "999px",
-              backgroundColor: "#111",
-              color: "#fff",
-              textDecoration: "none",
-              fontSize: "14px",
-            }}
-          >
-            Login to Console
-          </a>
+          {user ? (
+            <>
+              <span style={{ fontSize: "13px", color: "#777" }}>
+                Logged in as{" "}
+                <strong style={{ fontWeight: 600 }}>
+                  {user.email || "employee"}
+                </strong>
+              </span>
+              <button
+                type="button"
+                onClick={handleLogout}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: "999px",
+                  border: "none",
+                  backgroundColor: "#111",
+                  color: "#fff",
+                  fontSize: "14px",
+                  cursor: "pointer",
+                }}
+              >
+                Logout
+              </button>
+            </>
+          ) : (
+            <>
+              <span style={{ fontSize: "13px", color: "#777" }}>
+                Authorized employees only.
+              </span>
+              <a
+                href="/login"
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: "999px",
+                  backgroundColor: "#111",
+                  color: "#fff",
+                  textDecoration: "none",
+                  fontSize: "14px",
+                }}
+              >
+                Login to Console
+              </a>
+            </>
+          )}
         </section>
       </div>
     </main>
