@@ -1,6 +1,6 @@
 // pages/api/shopify/webhooks/orders-updated.js
 import crypto from "crypto";
-import nodemailer from "nodemailer";
+
 import supabaseAdmin from "../../../lib/supabaseAdmin"; // service role client
 
 export const config = {
@@ -49,12 +49,7 @@ function extractRequest(order) {
 
 async function sendEmail({ subject, text }) {
   // Use SMTP creds or switch to Resend/Sendgrid if you prefer
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: false,
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
+  
 
   await transporter.sendMail({
     from: process.env.NOTIFY_FROM,          // e.g. "Megaska Ops <no-reply@megaska.com>"
