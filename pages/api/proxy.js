@@ -91,7 +91,45 @@ async function sendAdminAlert(subject, text) {
     console.error("ADMIN_ALERT_ERROR", err);
   }
 }
+async function logOrderRequest({
+  shopDomain,
+  orderId,
+  orderName,
+  requestType, // "EXCHANGE" | "DEFECT" | "CANCEL"
+  customerEmail,
+  customerPhone,
+  dedupeKey,
+  payload,
+}) {
+  try {
+    // Using supabaseAdmin (already imported) because it’s your canonical server admin client.
+    const row = {
+      dedupe_key: dedupeKey,
+      shop_domain: shopDomain || null,
+      order_id: orderId || null,
+      order_name: orderName || null,
+      request_type: requestType || null,
+      request_id:
+        (globalThis.crypto && crypto.randomUUID && crypto.randomUUID()) ||
+        String(Date.now()),
+      payload: payload || null,
+      status: "NEW",
+      customer_email: customerEmail || null,
+      customer_phone: customerPhone || null,
+      first_notified_at: new Date().toISOString(),
+    };
 
+    const { error } = await supabaseAdmin
+      .from("shopify_order_request_notifications")
+      .upsert(row, { onConflict: "dedupe_key" });
+
+    if (error) {
+      console.error("ORDER_REQUEST_LOG_UPSERT_ERROR", error);
+    }
+  } catch (err) {
+    console.error("ORDER_REQUEST_LOG_FATAL", err);
+  }
+}
 // ---- List orders (we already proved this works) ----
 async function listOrders(req, res) {
   const customerEmail = req.query.customer_email;
@@ -300,6 +338,7 @@ async function exchangeRequest(req, res) {
   const lineItemId = req.query.line_item_id;
   const newSize = (req.query.new_size || "").trim();
   const reason = (req.query.reason || "").trim();
+  const customerPhone = (req.query.customer_phone || "").trim();
 
   if (!orderId) {
     res.status(400).json({ ok: false, error: "order_id is required" });
