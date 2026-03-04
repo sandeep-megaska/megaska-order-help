@@ -439,23 +439,13 @@ async function exchangeRequest(req, res) {
 
     // Check if exchange has already been requested
     const tags = order.tags || [];
-    if (tags.includes("exchange-request")) {
-          await sendAdminAlert(
-      `Megaska: Size exchange request – ${order.name || orderId}`,
-      `A customer has requested a size exchange.\n\nOrder: ${order.name || orderId}\nCustomer email: ${customerEmail}\nProduct: ${li.name}${li.variantTitle ? " (" + li.variantTitle + ")" : ""}\nSKU: ${li.sku || "-"}\nNew size requested: ${newSize}\nReason: ${reason || "not provided"}`
-    );
-
-    res.status(200).json({
-      ok: true,
-      message: "Your size exchange request has been submitted.",
-    });
-
-      res.status(400).json({
-        ok: false,
-        error: "An exchange request has already been submitted for this order.",
-      });
-      return;
-    }
+if (tags.includes("exchange-request")) {
+  // Don’t spam notes/tags again. Also don’t send another alert.
+  return res.status(400).json({
+    ok: false,
+    error: "An exchange request has already been submitted for this order.",
+  });
+}
 
     // Find the line item being exchanged
     // Find the line item being exchanged
@@ -484,7 +474,27 @@ if (!line) {
 }
 
     const li = line.node;
+const shopDomain = req.query.shop || process.env.SHOPIFY_SHOP_DOMAIN || process.env.SHOPIFY_SHOP || "";
+const dedupeKey = `${shopDomain}|EXCHANGE|${orderId}|${li.id}`;
 
+await logOrderRequest({
+  shopDomain,
+  orderId,
+  orderName: order.name || null,
+  requestType: "EXCHANGE",
+  customerEmail,
+  customerPhone: customerPhone || null,
+  dedupeKey,
+  payload: {
+    line_item_id: li.id,
+    sku: li.sku || null,
+    product_name: li.name || null,
+    variant_title: li.variantTitle || null,
+    quantity: li.quantity || null,
+    new_size: newSize,
+    reason: reason || null,
+  },
+});
     // Build a nice note line
     let noteLine = `[EXCHANGE REQUEST] Product: ${li.name}`;
     if (li.variantTitle) noteLine += ` (${li.variantTitle})`;
@@ -559,7 +569,7 @@ async function defectReport(req, res) {
   const lineItemId = req.query.line_item_id;
   const issueType = (req.query.issue_type || "").trim();
   const description = (req.query.description || "").trim();
-
+  const customerPhone = (req.query.customer_phone || "").trim();
   if (!orderId) {
     res.status(400).json({ ok: false, error: "order_id is required" });
     return;
@@ -682,6 +692,27 @@ async function defectReport(req, res) {
     }
 
     const li = line.node;
+    const shopDomain = req.query.shop || process.env.SHOPIFY_SHOP_DOMAIN || process.env.SHOPIFY_SHOP || "";
+const dedupeKey = `${shopDomain}|DEFECT|${orderId}|${li.id}`;
+
+await logOrderRequest({
+  shopDomain,
+  orderId,
+  orderName: order.name || null,
+  requestType: "DEFECT",
+  customerEmail,
+  customerPhone: customerPhone || null,
+  dedupeKey,
+  payload: {
+    line_item_id: li.id,
+    sku: li.sku || null,
+    product_name: li.name || null,
+    variant_title: li.variantTitle || null,
+    quantity: li.quantity || null,
+    issue_type: issueType,
+    description: description || null,
+  },
+});
     let noteLine = `[QUALITY ISSUE] Product: ${li.name}`;
     if (li.variantTitle) noteLine += ` (${li.variantTitle})`;
     if (li.sku) noteLine += ` | SKU: ${li.sku}`;
