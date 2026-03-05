@@ -1,9 +1,18 @@
+import { requireShopifyStaff } from "../../../../lib/verifyShopifySessionToken";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "POST required" });
+  try {
+    const { shopDomain } = await requireShopifyStaff(req);
+
+    // optional: ensure shopDomain matches your expected store
+    // if (shopDomain !== process.env.SHOPIFY_SHOP_DOMAIN) return res.status(403).json({ ok:false, error:"Wrong shop" });
+
+    // ...existing supabase query...
+  } catch (err) {
+    return res.status(401).json({ ok: false, error: err.message || "Unauthorized" });
   }
+}
 
   const adminToken = process.env.ADMIN_WALLET_TOKEN;
   const { admin_token, id, status } = req.body || {};
